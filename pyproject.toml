@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "yadygaga"
+version = "0.0.1"
+description = "Dynamic graph generator based on a static graph and user parameters."
+authors = ["Hugo Le Dirach <hugo.le_dirach@onera.fr>"]
+license = "GPL 2.0"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+networkx = "^2.5"
