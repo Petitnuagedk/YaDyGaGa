@@ -58,22 +58,40 @@ class PropertiesChecker:
             raise ValueError("graphs list is empty")
 
         frames_path_exists = 0
+        state = 0                # 1 -> up, 0 -> down
+        stateChange = 0
 
         for g in graphs:
             # count if any path exists between source and destination in this frame
             try:
                 if nx.has_path(g, source, destination):
                     frames_path_exists += 1
+                    if state == 1:
+                        pass
+                    elif state == 0:
+                        stateChange += 1  # we only count upfront transitions
+                        state = 1
+                else:
+                    if state == 0:
+                        pass
+                    elif state == 1:
+                        state = 0
+
             except nx.NetworkXError:
                 # missing nodes -> no path
                 pass
 
         stability_ratio = None
+        possible_changes = len(graphs)/2
         if frames_path_exists > 0:
-            stability_ratio = frames_path_exists / len(graphs)
+            print(stateChange)
+            print(len(graphs))
+            stability_ratio = 1 - (stateChange / possible_changes)
 
         return {
             "frames_path_exists": frames_path_exists,
+            "Number_of_state_changes": stateChange,
+            "Number_of_possible_changes": possible_changes,
             "stability_ratio": stability_ratio
         }
 

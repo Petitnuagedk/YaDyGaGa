@@ -63,9 +63,9 @@ def main():
     pathUpFrames = frame_generator.path_up_frames
     pathDownFrames = frame_generator.path_down_frames
     # properties_checker = PropertiesChecker()
-    frames = 10
+    frames = 50
     path_life = 0.5
-    stability = 1
+    stability = 0.8
     mode = "blocks"
     timeline_block_generator = TimelineBlockGenerator(frames, path_life, stability, mode)
     timeLine = timeline_block_generator.generate_blocks()
@@ -75,7 +75,7 @@ def main():
     DynaGA = DynamicGraph()
     DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
 
-    DynaGAset = DynaGA.generate_unique_set(timeLine, pathUpFrames, pathDownFrames, target_count=5, randomize=True, max_enumeration=1000)
+    #DynaGAset = DynaGA.generate_unique_set(timeLine, pathUpFrames, pathDownFrames, target_count=5, randomize=True, max_enumeration=1000)
 
 
     path_lifetime = PropertiesChecker.path_lifetime(graphs=DynaGA.DynamicGraph, source=S, destination=D, fps=1)
@@ -84,13 +84,12 @@ def main():
     path_stability = PropertiesChecker.path_stability(graphs=DynaGA.DynamicGraph, source=S, destination=D)
     print("Path stability properties: ", path_stability)
 
-    path_length = PropertiesChecker.path_length(graphs=DynaGA.DynamicGraph, source=S, destination=D)
-    print("Path length properties: ", path_length)
+    #path_length = PropertiesChecker.path_length(graphs=DynaGA.DynamicGraph, source=S, destination=D)
+    #print("Path length properties: ", path_length)
 
     print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
     timeline_visualizer = Visualizer(timeLine)
-    timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
-    #timeline_visualizer.plot_random_dynamics(DynaGAset, n=3, pick_frame='random', figsize=(15, 5))
-    timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, pick_frame='random', interval=1000)
+    #timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
+    #timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, interval=1000)
 if __name__ == "__main__":
     main()

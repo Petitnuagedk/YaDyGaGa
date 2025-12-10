@@ -100,7 +100,7 @@ class Visualizer:
                                 interval: int = 1000,
                                 loop: bool = True,
                                 seed: int = None,
-                                figsize=(15, 15),
+                                figsize=(15, 5),
                                 node_size=100,
                                 node_color='skyblue',
                                 absent_node_color='lightgray',
