@@ -75,21 +75,18 @@ def main():
     DynaGA = DynamicGraph()
     DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
 
-    print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
-    timeline_visualizer = Visualizer(timeLine)
-    timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
-
     path_lifetime = PropertiesChecker.path_lifetime(graphs=DynaGA.DynamicGraph, source=S, destination=D, fps=1)
     print("Path lifetime properties: ", path_lifetime)
 
+    path_stability = PropertiesChecker.path_stability(graphs=DynaGA.DynamicGraph, source=S, destination=D)
+    print("Path stability properties: ", path_stability)
 
-    # Here you can add code to demonstrate the functionality of the classes
-    # For example:
-    # frames = frame_generator.generate_frames(parameters)
-    # if properties_checker.check_properties(frames):
-    #     blocks = timeline_block_generator.generate_blocks(frames)
-    #     timeline = timeline_assembler.assemble_timeline(blocks)
-    #     timeline_visualizer.visualize(timeline)
+    path_length = PropertiesChecker.path_length(graphs=DynaGA.DynamicGraph, source=S, destination=D)
+    print("Path length properties: ", path_length)
+
+    print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
+    timeline_visualizer = Visualizer(timeLine)
+    timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
 
 if __name__ == "__main__":
     main()

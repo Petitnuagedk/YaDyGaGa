@@ -41,7 +41,7 @@ class PropertiesChecker:
             "uptime_seconds": uptime_seconds
         }
 
-    def path_stability(self, graphs, source, destination, pair=None):
+    def path_stability(graphs, source, destination):
         """
         Compute stability ratio of a given pair (edge) relative to existence of any path
         between source and destination.
@@ -52,25 +52,14 @@ class PropertiesChecker:
         :param graphs: list of networkx.Graph objects (frames).
         :param source: source node (used if pair not provided).
         :param destination: destination node (used if pair not provided).
-        :param pair: optional tuple (u, v) specifying the edge to track. If None, uses (source, destination).
         :return: dict with frames_pair_up, frames_path_exists, stability_ratio (or None).
         """
         if not graphs:
             raise ValueError("graphs list is empty")
 
-        u, v = pair if pair is not None else (source, destination)
-
-        frames_pair_up = 0
         frames_path_exists = 0
 
         for g in graphs:
-            # count if pair edge exists in this frame
-            try:
-                if g.has_edge(u, v):
-                    frames_pair_up += 1
-            except Exception:
-                pass
-
             # count if any path exists between source and destination in this frame
             try:
                 if nx.has_path(g, source, destination):
@@ -81,15 +70,14 @@ class PropertiesChecker:
 
         stability_ratio = None
         if frames_path_exists > 0:
-            stability_ratio = frames_pair_up / frames_path_exists
+            stability_ratio = frames_path_exists / len(graphs)
 
         return {
-            "frames_pair_up": frames_pair_up,
             "frames_path_exists": frames_path_exists,
             "stability_ratio": stability_ratio
         }
 
-    def path_length(self, graphs, source, destination):
+    def path_length(graphs, source, destination):
         """
         Measure shortest path length between source and destination for each frame.
 
