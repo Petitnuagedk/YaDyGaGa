@@ -75,6 +75,9 @@ def main():
     DynaGA = DynamicGraph()
     DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
 
+    DynaGAset = DynaGA.generate_unique_set(timeLine, pathUpFrames, pathDownFrames, target_count=5, randomize=True, max_enumeration=1000)
+
+
     path_lifetime = PropertiesChecker.path_lifetime(graphs=DynaGA.DynamicGraph, source=S, destination=D, fps=1)
     print("Path lifetime properties: ", path_lifetime)
 
@@ -87,6 +90,7 @@ def main():
     print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
     timeline_visualizer = Visualizer(timeLine)
     timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
-
+    timeline_visualizer.plot_random_dynamics(DynaGAset, n=3, pick_frame='random', figsize=(15, 5))
+    timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, pick_frame='random', interval=1000)
 if __name__ == "__main__":
     main()
