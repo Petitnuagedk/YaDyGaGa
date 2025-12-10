@@ -8,44 +8,12 @@ and TimelineVisualizer classes.
 """
 import networkx as nx
 
+from SourceGraphAugmenter import SourceGraphAugmenter
 from frame_generator import FrameGenerator
 from timeline_block_generator import TimelineBlockGenerator
 from DynaGraph import DynamicGraph
 from visualizer import Visualizer
 from properties_checker import PropertiesChecker
-
-def augment_graph_keep_baseline(G: nx.Graph, s: str, d: str) -> nx.Graph:
-    """
-    Return a new graph that contains G plus any extra edge (u,v) between
-    nodes that are not neighbors in G such that adding (u,v) does NOT reduce
-    the shortest-path length between s and d (compared to the baseline).
-    Baseline is computed on the original G.
-    """
-    baseline = None
-    try:
-        baseline = nx.shortest_path_length(G, s, d)
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
-        baseline = float('inf')
-
-    limited = G.copy()
-    nodes = list(G.nodes())
-    n = len(nodes)
-    for i in range(n):
-        for j in range(i + 1, n):
-            u, v = nodes[i], nodes[j]
-            if limited.has_edge(u, v):
-                continue
-            # test adding (u, v) to original graph and see new distance
-            H = G.copy()
-            H.add_edge(u, v)
-            try:
-                new_len = nx.shortest_path_length(H, s, d)
-            except nx.NetworkXNoPath:
-                new_len = float('inf')
-            # only allow the new edge if it does NOT reduce the s-d distance
-            if new_len >= baseline:
-                limited.add_edge(u, v)
-    return limited
 
 def main():
 
@@ -55,7 +23,7 @@ def main():
         ("E", "F")
         ])
     S, D = "A", "F"
-    limited = augment_graph_keep_baseline(G, S, D)
+    limited = SourceGraphAugmenter.augment_graph_keep_baseline(G, S, D)
     # Example usage of the classes
     frame_generator = FrameGenerator()
     frame_generator.generate_frames(limited, S, D, trials=1000, p_edge=0.5)
@@ -64,6 +32,7 @@ def main():
     pathDownFrames = frame_generator.path_down_frames
     # properties_checker = PropertiesChecker()
     frames = 50
+    InversepathLength = 1 # TODO
     path_life = 0.5
     stability = 0.8
     mode = "blocks"
@@ -84,8 +53,8 @@ def main():
     path_stability = PropertiesChecker.path_stability(graphs=DynaGA.DynamicGraph, source=S, destination=D)
     print("Path stability properties: ", path_stability)
 
-    #path_length = PropertiesChecker.path_length(graphs=DynaGA.DynamicGraph, source=S, destination=D)
-    #print("Path length properties: ", path_length)
+    path_length = PropertiesChecker.path_length(graphs=DynaGA.DynamicGraph, source=S, destination=D)
+    print("Path length properties: ", path_length)
 
     print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
     timeline_visualizer = Visualizer(timeLine)
