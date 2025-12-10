@@ -76,7 +76,6 @@ class DynamicGraph:
                             path_up: List[nx.Graph],
                             path_down: List[nx.Graph],
                             target_count: int,
-                            randomize: bool = True,
                             max_enumeration: int = 1000000) -> List['DynamicGraph']:
         """
         Generate up to `target_count` distinct DynamicGraph instances following `timeline`.
@@ -93,7 +92,6 @@ class DynamicGraph:
           - path_up: list of graphs usable when timeline frame is True
           - path_down: list of graphs usable when timeline frame is False
           - target_count: desired number of unique dynamics to generate
-          - randomize: if True and total combinations large, sample randomly; otherwise enumerate deterministic combos
           - max_enumeration: threshold for switching to random sampling to avoid huge enumerations
 
         Returns:

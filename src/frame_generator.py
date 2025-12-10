@@ -29,10 +29,9 @@ class FrameGenerator:
                 self.path_up_frames.append(H)
             else:
                 self.path_down_frames.append(H) 
+
     
 
-    def get_frame_data(self) -> List[nx.Graph]:
-        return self.frames
-
     def clear_frames(self) -> None:
-        self.frames.clear()
+        self.path_up_frames.clear()
+        self.path_down_frames.clear()
