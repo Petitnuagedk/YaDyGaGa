@@ -99,10 +99,9 @@ class Visualizer:
                                 n: int = 5,
                                 interval: int = 1000,
                                 loop: bool = True,
-                                pick_frame: str = 'random',
                                 seed: int = None,
-                                figsize=(15, 3),
-                                node_size=300,
+                                figsize=(15, 15),
+                                node_size=100,
                                 node_color='skyblue',
                                 absent_node_color='lightgray',
                                 edge_color='gray',
@@ -117,7 +116,6 @@ class Visualizer:
           - n: number of dynamics to select and show (default 5)
           - interval: ms between frames (default 1000ms -> 1fps)
           - loop: whether animation repeats after last frame
-          - pick_frame: (kept for parity with plot_random_dynamics) not used for animation
           - seed: optional int to make selection deterministic
           - figsize: figure size (width, height)
           - drawing options: node_size, node_color, absent_node_color, edge_color, with_labels
@@ -154,7 +152,7 @@ class Visualizer:
             for f in frames:
                 union.add_nodes_from(f.nodes())
                 union.add_edges_from(f.edges())
-            pos = nx.circular_layout(union, seed=42) if len(union) > 0 else {}
+            pos = nx.circular_layout(union) if len(union) > 0 else {}
             node_list = list(union.nodes())
             dyn_info.append({
                 "frames": frames,
