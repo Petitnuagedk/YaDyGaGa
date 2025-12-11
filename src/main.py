@@ -24,6 +24,13 @@ def main():
         ])
     S, D = "A", "F"
     limited = SourceGraphAugmenter.augment_graph_keep_baseline(G, S, D)
+    limited_group = SourceGraphAugmenter.augment_graph_keep_group_baseline(G, [("A","F"), ("C","F")],
+                                                                            seed = 1,
+                                                                            verbose = True)
+    print("Original Graph edges: ", G.edges())
+    print("Limited Graph edges: ", limited.edges())
+    print("Limited group Graph edges: ", limited_group.edges())
+    return
     # Example usage of the classes
     frame_generator = FrameGenerator()
     frame_generator.generate_frames(limited, S, D, trials=1000, p_edge=0.5)
@@ -57,8 +64,11 @@ def main():
     print("Path length properties: ", path_length)
 
     print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
-    timeline_visualizer = Visualizer(timeLine)
+    #timeline_visualizer = Visualizer(timeLine)
     #timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
     #timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, interval=1000)
+
+
+
 if __name__ == "__main__":
     main()
