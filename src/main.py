@@ -11,7 +11,7 @@ import networkx as nx
 from SourceGraphAugmenter import SourceGraphAugmenter
 from frame_generator import FrameGenerator
 from timeline_block_generator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
-from DynaGraph import DynamicGraph
+from DynaGraph import SPCDynamicGraph, MPCDynamicGraph
 from visualizer import Visualizer
 from properties_checker import PropertiesChecker
 
@@ -52,7 +52,7 @@ def main():
 
         print("Time line : ", timeLine)
 
-        DynaGA = DynamicGraph()
+        DynaGA = SPCDynamicGraph()
         DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
         DynaGAset = DynaGA.generate_unique_set(timeLine, pathUpFrames, pathDownFrames, target_count=5, seed = 42, max_enumeration=1000)
 
@@ -82,43 +82,31 @@ def main():
         limitedMPC = SourceGraphAugmenter.augmentBaseGraph(G, pairs,
                                                         seed = 1,
                                                         verbose = False)
-        print("Original Graph edges: ", G.edges())
-        print("Limited Graph edges: ", limitedMPC.edges())
-
+        print("\n","Original Graph edges: ", G.edges())
+        print("Limited Graph edges: ", limitedMPC.edges(), "\n")
         frame_generator = FrameGenerator()
-        dic = frame_generator.generate_frames_for_pairs(limitedMPC,
+        MPCFrameSet = frame_generator.generate_frames_for_pairs(limitedMPC,
                                                         pairs,
                                                         trials=1000,
                                                         p_edge=0.5,
                                                         seed = 1)
         
-        frames = 20
+        frames = 50
         nPairs = len(pairs)
         pathLifeTime = 0.5
         stability = 1
-        mode = "indep"
+        mode = "indep" # options: "sync" (default) or "indep"
         timelineGen = MPCTimelineBlockGenerator(frames, nPairs, pathLifeTime, stability, mode, seed = 40)
         # timeline_block_generator = SPCTimelineBlockGenerator(frames, path_life, stability, mode)
         timeLine = timelineGen.generate()
-        print("Time line : ", timeLine)
-        print(timelineGen.computeStatistics(timeLine))
+        print("Time line : ", timeLine, "\n")
+        print(timelineGen.computeStatistics(timeLine), "\n")
 
-        # print("len of dic: ", len(dic))
-        # print("Generated frames: ", len(dic['frames']))
-        # print("Cases found: ", len(dic['cases']))
-        # print("Counts per case: ", dic['counts'])
-        # print(len(dic['counts'].keys()), " unique cases found.")
+        MPCDynaGA = MPCDynamicGraph()
+        MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
 
-
-        # this
-        # print("case (True, True): ", dic['cases'].get((True, True), []))
-        ## ---
-        # print("pairs: ", len(dic['per_pair']))
-        # print("frame_0", dic["frames"][0].edges())
-        # print("A graph where (A,F) is up: ", dic['frames'][dic['per_pair'][0]['up_indices'][0]].edges())
-        # print("pairs summary: ", dic['pairs'])
-        #print("Per pair details: ", dic['per_pair'])
-        #print("Frames where (A,F) is up: ", dic['per_pair'][0]['up_indices'])
+        timeline_visualizer = Visualizer(timeLine)
+        timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph)
         return
 
 

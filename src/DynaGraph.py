@@ -4,7 +4,7 @@ import networkx as nx
 import itertools
 import math
 
-class DynamicGraph:
+class SPCDynamicGraph:
     """
     Assembles generated timeline blocks into a cohesive timeline called a DynamicGraph.
     """
@@ -77,7 +77,7 @@ class DynamicGraph:
                             path_down: List[nx.Graph],
                             target_count: int,
                             seed: int = None,
-                            max_enumeration: int = 1000000) -> List['DynamicGraph']:
+                            max_enumeration: int = 1000000) -> List['SPCDynamicGraph']:
         """
         Generate up to `target_count` distinct DynamicGraph instances following `timeline`.
         Distinctness is enforced frame-wise: two dynamics are considered equal if every
@@ -124,7 +124,7 @@ class DynamicGraph:
             total_combinations *= s
 
         # if total_combinations is small, enumerate all deterministic combinations
-        results: List[DynamicGraph] = []
+        results: List[SPCDynamicGraph] = []
         seen = set()
 
         def build_from_indices(idxs):
@@ -133,7 +133,7 @@ class DynamicGraph:
             if fp in seen:
                 return None
             seen.add(fp)
-            dg = DynamicGraph()
+            dg = SPCDynamicGraph()
             dg.DynamicGraph = frames_seq.copy()
             return dg
 
@@ -170,3 +170,114 @@ class DynamicGraph:
                         break
 
         return results
+    
+class MPCDynamicGraph:
+    """
+    Build a dynamic graph sequence for Multi-Pair timelines.
+
+    Core method:
+      - buildDynaGraph(mpc_timeline, mpc_frame_set, seed=None, no_double=True)
+
+    - mpc_timeline: list of tuples of booleans, one tuple per frame (e.g. [(True,False),(True,False)])
+    - mpc_frame_set: output of FrameGenerator.generate_frames_for_pairs, expected keys:
+        'frames' : list[nx.Graph]
+        'cases'  : dict{ status_tuple -> [frame_indices] }
+    - seed: optional int for deterministic selection
+    - no_double: if True avoid reusing the same frame index twice when possible
+    """
+    def __init__(self):
+        self.DynamicGraph: List[nx.Graph] = []
+        self.selected_frame_indices: List[int] = []
+        self.selected_statuses: List[Tuple[bool, ...]] = []
+
+    def _hamming(self, a: Tuple[bool, ...], b: Tuple[bool, ...]) -> int:
+        return sum(1 for x, y in zip(a, b) if x != y) + abs(len(a) - len(b))
+
+    def buildDynaGraph(self,
+                       mpc_timeline: List[Tuple[bool, ...]],
+                       mpc_frame_set: dict,
+                       seed: int = None,
+                       no_double: bool = True,
+                       allow_hamming_fallback: bool = True) -> List[nx.Graph]:
+        """
+        Build DynamicGraph picking frames from mpc_frame_set that match each tuple
+        in mpc_timeline. If an exact match does not exist for a timeline frame, we
+        optionally fallback to the closest status by Hamming distance, then to any unused
+        frame, then to any frame.
+
+        Returns the list of selected nx.Graph frames and sets attributes on self.
+        """
+        rnd = random.Random(seed)
+
+        frames = mpc_frame_set.get("frames", [])
+        cases = mpc_frame_set.get("cases", {})
+
+        if not mpc_timeline:
+            raise ValueError("mpc_timeline is empty")
+        if not frames:
+            raise ValueError("mpc_frame_set has no frames")
+
+        # normalize timeline tuples
+        timeline = [tuple(bool(x) for x in t) for t in mpc_timeline]
+
+        # copy available pools so we can remove indices when no_double is requested
+        available = {k: list(v) for k, v in cases.items()}
+
+        # build reverse map idx -> status tuple for quick lookup
+        idx_to_status = {}
+        for status, idxs in cases.items():
+            for i in idxs:
+                idx_to_status[i] = status
+
+        chosen_indices: List[int] = []
+        chosen_statuses: List[Tuple[bool, ...]] = []
+
+        all_indices = set(range(len(frames)))
+
+        for desired in timeline:
+            # try exact pool first
+            pool = available.get(desired, [])
+            if pool:
+                idx = rnd.choice(pool)
+                chosen_indices.append(idx)
+                chosen_statuses.append(desired)
+                if no_double:
+                    pool.remove(idx)
+                continue
+
+            # fallback by Hamming distance among existing case keys
+            found = False
+            if allow_hamming_fallback and cases:
+                candidates = sorted(cases.keys(), key=lambda s: self._hamming(s, desired))
+                for cand in candidates:
+                    pool2 = available.get(cand, [])
+                    if pool2:
+                        idx = rnd.choice(pool2)
+                        chosen_indices.append(idx)
+                        chosen_statuses.append(cand)
+                        if no_double:
+                            pool2.remove(idx)
+                        found = True
+                        break
+            if found:
+                continue
+
+            # fallback to any unused frame
+            remaining = list(all_indices - set(chosen_indices)) if no_double else []
+            if remaining:
+                idx = rnd.choice(remaining)
+                chosen_indices.append(idx)
+                chosen_statuses.append(idx_to_status.get(idx, tuple()))
+                continue
+
+            # last resort: pick any random frame
+            idx = rnd.randrange(len(frames))
+            chosen_indices.append(idx)
+            chosen_statuses.append(idx_to_status.get(idx, tuple()))
+
+        # assemble DynamicGraph frames
+        self.DynamicGraph = [frames[i] for i in chosen_indices]
+        self.selected_frame_indices = chosen_indices
+        self.selected_statuses = chosen_statuses
+
+        return self.DynamicGraph

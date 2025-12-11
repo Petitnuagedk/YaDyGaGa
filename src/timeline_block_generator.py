@@ -257,17 +257,14 @@ class MPCTimelineBlockGenerator:
             g = SPCTimelineBlockGenerator(frames, path_life, stability, seed, mode="blocks")
             # SPCTimelineBlockGenerator uses random globals; if seed provided, patch random
             if seed is not None:
-                print("seed was set")
                 # make a private random choice by seeding the module-level random
                 rnd_local = random.getstate()
                 random.seed(seed)
                 try:
                     tl = g.generate_blocks()
-                    print(tl)
                 finally:
                     random.setstate(rnd_local)
             else:
-                print("seed is None")
                 tl = g.generate_blocks()
             return tl
 
@@ -285,7 +282,6 @@ class MPCTimelineBlockGenerator:
         per_pair_timelines = []
         for i in range(self.n_pairs):
             pair_seed = None if self.seed is None else (self.seed * (i+1))
-            print("seed:", pair_seed)
             tl = _single_tl(self.frames, self.path_life, self.stability, seed=pair_seed)
             per_pair_timelines.append([bool(x) for x in tl])
 
