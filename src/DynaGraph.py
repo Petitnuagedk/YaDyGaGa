@@ -76,6 +76,7 @@ class DynamicGraph:
                             path_up: List[nx.Graph],
                             path_down: List[nx.Graph],
                             target_count: int,
+                            seed: int = None,
                             max_enumeration: int = 1000000) -> List['DynamicGraph']:
         """
         Generate up to `target_count` distinct DynamicGraph instances following `timeline`.
@@ -97,6 +98,8 @@ class DynamicGraph:
         Returns:
           list of DynamicGraph objects (length <= target_count)
         """
+        random.seed(seed)
+
         if target_count <= 0:
             return []
 

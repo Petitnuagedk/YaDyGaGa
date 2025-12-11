@@ -1,18 +1,19 @@
 from typing import List, Tuple
 import random
 
-class TimelineBlockGenerator:
+class SPCTimelineBlockGenerator:
     """
     TimelineBlockGenerator is responsible for generating blocks of timelines
     based on specified criteria. It includes methods for creating and managing
     timeline blocks.
     """
 
-    def __init__(self, frames: int, path_life: float, stability: float, mode: str = "blocks"):
+    def __init__(self, frames: int, path_life: float, stability: float, seed : float ,mode: str = "blocks"):
         self.frames = frames
         self.path_life = path_life
         self.stability = stability
         self.mode = mode
+        self.seed = seed
 
     def generate_blocks(self) -> List[bool]:
         """
@@ -27,6 +28,7 @@ class TimelineBlockGenerator:
         When there is a single up block, it may be placed at an edge (one down block)
         or in the middle (two down blocks).
         """
+        random.seed(self.seed)
         if self.frames <= 0:
             return []
 
@@ -207,3 +209,146 @@ class TimelineBlockGenerator:
             else:
                 timeline = [False] * self.frames
         return timeline
+    
+
+class MPCTimelineBlockGenerator:
+    """
+    Multi-Pair (MPC) timeline block generator.
+
+    Creates a timeline of length `frames` where each frame is a tuple of booleans
+    of size `n_pairs` representing the up/down state of each tracked pair.
+
+    Parameters passed to constructor:
+      - frames: total number of frames
+      - n_pairs: number of (source,destination) pairs to track
+      - path_life: average fraction of frames where a pair is up (0..1)
+      - stability: average stability for up blocks per pair (0..1)
+      - mode: 'sync' or 'indep'
+          - 'sync' (default) builds a single global up/down block timeline and
+            replicates it across all pairs (useful when pairs are correlated).
+          - 'indep' builds independent timelines per pair (same stats but different placements).
+      - seed: optional random seed for deterministic generation
+
+    The generate() method returns a list of frame-state tuples:
+      e.g. for n_pairs==3: [(False,False,False),(True,True,True), ...]
+    """
+    def __init__(self,
+                 frames: int,
+                 n_pairs: int,
+                 path_life: float,
+                 stability: float,
+                 mode: str = "sync",
+                 seed: int = None):
+        self.frames = int(frames)
+        self.n_pairs = int(n_pairs)
+        self.path_life = float(path_life)
+        self.stability = float(stability)
+        self.mode = mode if mode in ("sync", "indep") else "sync"
+        self.seed = seed
+
+    def generate(self):
+        """
+        Generate and return the multi-pair timeline as a list of tuples (len == frames).
+        """
+        rnd = random.Random(self.seed)
+
+        # Helper to create a single boolean timeline using the SPC generator logic
+        def _single_tl(frames, path_life, stability, seed=None):
+            g = SPCTimelineBlockGenerator(frames, path_life, stability, seed, mode="blocks")
+            # SPCTimelineBlockGenerator uses random globals; if seed provided, patch random
+            if seed is not None:
+                print("seed was set")
+                # make a private random choice by seeding the module-level random
+                rnd_local = random.getstate()
+                random.seed(seed)
+                try:
+                    tl = g.generate_blocks()
+                    print(tl)
+                finally:
+                    random.setstate(rnd_local)
+            else:
+                print("seed is None")
+                tl = g.generate_blocks()
+            return tl
+
+        timeline_of_tuples = []
+
+        if self.mode == "sync":
+            # single global timeline replicated across pairs
+            global_seed = None if self.seed is None else (self.seed ^ 0x9e3779b9)
+            global_tl = _single_tl(self.frames, self.path_life, self.stability, seed=global_seed)
+            for st in global_tl:
+                timeline_of_tuples.append(tuple([bool(st) for _ in range(self.n_pairs)]))
+            return timeline_of_tuples
+
+        # mode == "indep": generate independent timelines per pair and zip them
+        per_pair_timelines = []
+        for i in range(self.n_pairs):
+            pair_seed = None if self.seed is None else (self.seed * (i+1))
+            print("seed:", pair_seed)
+            tl = _single_tl(self.frames, self.path_life, self.stability, seed=pair_seed)
+            per_pair_timelines.append([bool(x) for x in tl])
+
+        # transpose into frames of tuples
+        for fi in range(self.frames):
+            frame_tuple = tuple(per_pair_timelines[p][fi] for p in range(self.n_pairs))
+            timeline_of_tuples.append(frame_tuple)
+
+        return timeline_of_tuples
+
+    def computeStatistics(self, timeline):
+        """
+        Compute simple per-pair statistics from a generated timeline (list of tuples).
+        Returns dict with per_pair {'up_count','uptime_ratio','up_blocks','changes'} and
+        global counts for distinct status tuples.
+        """
+        if not timeline:
+            return {}
+
+        frames = len(timeline)
+        # collect per-pair lists
+        per_pair = [ [] for _ in range(self.n_pairs) ]
+        for t in timeline:
+            for i, val in enumerate(t):
+                per_pair[i].append(bool(val))
+
+        stats = {"frames": frames, "pairs": []}
+        for i, seq in enumerate(per_pair):
+            # up blocks
+            up_blocks = 0
+            cur = False
+            for v in seq:
+                if v and not cur:
+                    up_blocks += 1
+                cur = v
+            changes = sum(1 for j in range(1, frames) if seq[j] != seq[j-1])
+            up_count = sum(1 for v in seq if v)
+            stats["pairs"].append({
+                "pair_index": i,
+                "up_count": up_count,
+                "uptime_ratio": up_count / frames,
+                "up_blocks": up_blocks,
+                "changes": changes,
+            })
+
+        # global status tuple counts
+        if self.n_pairs == 2:
+            # optimize for 2 pairs: just count the 4 possible tuples
+            stats["status_tuples"] = {
+                (False, False): 0,
+                (False, True): 0,
+                (True, False): 0,
+                (True, True): 0,
+            }
+            for t in timeline:
+                stats["status_tuples"][tuple(t)] += 1
+        else:
+            # general case: count all unique tuples
+            stats["status_tuples"] = {}
+            for t in timeline:
+                if tuple(t) not in stats["status_tuples"]:
+                    stats["status_tuples"][tuple(t)] = 0
+                stats["status_tuples"][tuple(t)] += 1
+
+        return stats
+

@@ -39,7 +39,7 @@ class SourceGraphAugmenter:
                     limited.add_edge(u, v)
         return limited
     
-    def augment_graph_keep_group_baseline(G: nx.Graph, group, seed: int = None, max_edges: int = None, verbose: bool = False) -> nx.Graph:
+    def augmentBaseGraph(G: nx.Graph, group, seed: int = None, max_edges: int = None, verbose: bool = False) -> nx.Graph:
         """
         Greedy, order-randomized augmentation that keeps original group baselines.
 
