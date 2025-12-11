@@ -1,33 +1,68 @@
-# YaDyGaGa Project
+# YaDyGaGa
 
-## Overview
-YaDyGaGa is a dynamic graph generation tool that allows users to create and manipulate graphs based on specified parameters. The project provides a modular structure for generating frames, checking properties, assembling timelines, and visualizing results.
+YaDyGaGa is a small toolkit to generate, assemble and visualize dynamic graphs (sequences of networkx graphs).  
+It is aimed at experimentation with path uptime, stability and multi-pair scenarios where each frame is a sampled subgraph.
 
-## Features
-- **Frame Generation**: Create frames based on user-defined parameters.
-- **Properties Checking**: Validate the properties of graphs and frames to ensure data integrity.
-- **Timeline Block Generation**: Generate blocks of timelines based on specified criteria.
-- **Timeline Assembly**: Assemble generated timeline blocks into a cohesive timeline.
-- **Timeline Visualization**: Visualize the assembled timeline in various formats.
+## Key components
+- FrameGenerator — sample frames from a base graph (produce up/down frames for pairs).
+- SourceGraphAugmenter — greedy, seeded augmentation of a base graph while keeping path baselines.
+- TimelineBlockGenerator (SPC / MPC) — create block-structured timelines (single-pair or multi-pair).
+- DynaGraph (SPC / MPC) — assemble timelines into concrete dynamic graph sequences selected from frame sets.
+- PropertiesChecker — compute metrics: uptime, lifetime, stability, shortest-path length statistics.
+- Visualizer — static/animated visualization of dynamics using matplotlib & networkx.
 
-## Installation
-To install the required dependencies, run the following command:
+## Requirements
+- Python 3.8+
+- networkx
+- matplotlib
 
+Install:
 ```
 pip install -r requirements.txt
 ```
 
-## Usage
-To use the YaDyGaGa project, you can run the main application:
+## Quick start (example workflow)
+1. Build or load a base graph G.
+2. Optionally augment it with SourceGraphAugmenter to produce a limited edge set.
+3. Use FrameGenerator.generate_frames_for_pairs(...) to produce a frame pool and a map of cases (per-status frame indices).
+4. Create a timeline using TimelineBlockGenerator / MPCTimelineBlockGenerator.
+5. Assemble a dynamic sequence with DynaGraph.buildDynaGraph(...) using the timeline and frame set.
+6. Inspect metrics with PropertiesChecker and visualize with Visualizer.animate_random_dynamics or visualize_dynamic_graph.
 
-```
-python src/yadygaga/main.py
+Example (rough):
+```python
+from src import SourceGraphAugmenter, FrameGenerator, MPCTimelineBlockGenerator, MPCDynamicGraph, Visualizer
+
+# 1) prepare base graph G...
+limited = SourceGraphAugmenter.augmentBaseGraph(G, pairs=[("A","F"),("C","F")], seed=1)
+
+# 2) generate frame set for pairs
+fg = FrameGenerator()
+frame_set = fg.generate_frames_for_pairs(limited, pairs=[("A","F"),("C","F")], trials=1000, p_edge=0.5, seed=1)
+
+# 3) build timeline and assemble a dynamic
+mpc = MPCTimelineBlockGenerator(frames=50, n_pairs=2, path_life=0.5, stability=1.0, mode="indep", seed=1)
+timeline = mpc.generate()
+dyn_builder = MPCDynamicGraph()
+dynamic = dyn_builder.buildDynaGraph(timeline, frame_set, seed=1, no_double=True)
+
+# 4) visualize
+viz = Visualizer(timeline=None)  # timeline param optional for some methods
+viz.animate_random_dynamics([dynamic], n=1, interval=500)
 ```
 
-This will execute the example usage defined in the `main.py` file, demonstrating how to utilize the various classes and functionalities provided by the project.
+## Testing
+Add unit tests under `tests/` and run with pytest:
+```
+pytest
+```
 
 ## Contributing
-Contributions are welcome! Please feel free to submit a pull request or open an issue for any enhancements or bug fixes.
+- Follow existing module structure and add unit tests for new behavior.
+- Keep augmentation deterministic with seeds where reproducibility is needed.
 
 ## License
-This project is licensed under the GPL 2.0 License. See the LICENSE file for more details.
+GPL-2.0 (see LICENSE file).
+
+## Contact
+Open issues or PRs on the repository for bugs or feature requests.
