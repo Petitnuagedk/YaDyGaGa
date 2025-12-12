@@ -22,6 +22,18 @@ def main():
         ("A", "C"), ("B", "C"), ("C", "E"), ("D", "B"),
         ("E", "F")])
     
+    print("\n This is a demo case for YADYGAGA, a path constraint Dynamic graph generator\n")
+    print("\n The demonstration will be made on the following graph:\n")
+    print("         A         ")
+    print("          \        ")
+    print("       B---C       ")
+    print("       |   |       ")
+    print("       D   E       ")
+    print("          /        ")
+    print("         F         \n")
+    print("Where the, in the case of SPC test, the constraint path is bewteen the pair A-F")
+    print("and in the case of MPC test, pairs = [(A,F), (C,F)]\n")
+    
     test = "MPC"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint)
 
         # Single path constraint exemple
