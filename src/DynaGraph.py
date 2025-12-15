@@ -281,3 +281,112 @@ class MPCDynamicGraph:
         self.selected_statuses = chosen_statuses
 
         return self.DynamicGraph
+
+    def generate_unique_set(self,
+                            mpc_timeline: List[Tuple[bool, ...]],
+                            mpc_frame_set: dict,
+                            target_count: int,
+                            seed: int = None,
+                            max_enumeration: int = 1000000) -> List['MPCDynamicGraph']:
+        """
+        Generate up to `target_count` distinct MPCDynamicGraph instances following `mpc_timeline`.
+        Distinctness is enforced frame-wise (exact graph equality via simple fingerprint).
+
+        Parameters:
+          - mpc_timeline: list of status tuples
+          - mpc_frame_set: output of FrameGenerator.generate_frames_for_pairs (expects 'frames' and 'cases')
+          - target_count: desired number of unique dynamics
+          - seed: optional int to seed random sampling
+          - max_enumeration: threshold to switch from exhaustive enumeration to random sampling
+
+        Returns list of MPCDynamicGraph objects (length <= target_count)
+        """
+        rnd = random.Random(seed)
+
+        frames = mpc_frame_set.get("frames", [])
+        cases = mpc_frame_set.get("cases", {})
+
+        if target_count <= 0:
+            return []
+        if not mpc_timeline:
+            raise ValueError("mpc_timeline is empty")
+        if not frames:
+            raise ValueError("mpc_frame_set has no frames")
+
+        # For each timeline position, build a pool of candidate frame indices (fallback to all indices)
+        pools_idx: List[List[int]] = []
+        all_indices = list(range(len(frames)))
+        for status in mpc_timeline:
+            status = tuple(bool(x) for x in status)
+            idxs = list(cases.get(status, []))
+            if not idxs:
+                # fallback: use all frames
+                idxs = all_indices.copy()
+            pools_idx.append(idxs)
+
+        # compute total combinations
+        sizes = [len(p) for p in pools_idx]
+        total_combinations = 1
+        for s in sizes:
+            total_combinations *= s
+
+        # local fingerprint helpers
+        def _frame_fingerprint(g: nx.Graph):
+            if g is None:
+                return ("nodes", tuple(), "edges", tuple())
+            nodes = tuple(sorted(map(str, g.nodes())))
+            edges = tuple(sorted(tuple(sorted((str(u), str(v)))) for u, v in g.edges()))
+            return ("nodes", nodes, "edges", edges)
+
+        def _timeline_fingerprint(seq: List[nx.Graph]):
+            return tuple(_frame_fingerprint(g) for g in seq)
+
+        results: List[MPCDynamicGraph] = []
+        seen = set()
+
+        def build_from_choice_indices(choice_idxs: List[int]):
+            seq = [frames[i] for i in choice_idxs]
+            fp = _timeline_fingerprint(seq)
+            if fp in seen:
+                return None
+            seen.add(fp)
+            dg = MPCDynamicGraph()
+            dg.DynamicGraph = seq.copy()
+            dg.selected_frame_indices = choice_idxs.copy()
+            dg.selected_statuses = [mpc_frame_set.get("cases_map", {}).get(i, mpc_frame_set.get("cases", {})) for i in choice_idxs]
+            return dg
+
+        # enumeration path
+        if total_combinations <= max_enumeration:
+            # iterate deterministic product of indices within pools
+            for combo in itertools.product(*(range(len(pools_idx[i])) for i in range(len(pools_idx)))):
+                # map combo positions to actual frame indices
+                choice = [pools_idx[i][combo[i]] for i in range(len(combo))]
+                dg = build_from_choice_indices(choice)
+                if dg:
+                    results.append(dg)
+                    if len(results) >= target_count:
+                        break
+            return results
+
+        # randomized sampling path
+        attempts = 0
+        max_attempts = int(min(max_enumeration, total_combinations, target_count * 50))
+        while len(results) < target_count and attempts < max_attempts:
+            choice = [rnd.choice(pools_idx[i]) for i in range(len(pools_idx))]
+            dg = build_from_choice_indices(choice)
+            if dg:
+                results.append(dg)
+            attempts += 1
+
+        # best-effort deterministic fill if still short (bounded)
+        if len(results) < target_count and total_combinations <= max_enumeration * 5:
+            for combo in itertools.product(*(range(len(pools_idx[i])) for i in range(len(pools_idx)))):
+                choice = [pools_idx[i][combo[i]] for i in range(len(combo))]
+                dg = build_from_choice_indices(choice)
+                if dg:
+                    results.append(dg)
+                    if len(results) >= target_count:
+                        break
+
+        return results

@@ -15,7 +15,7 @@ from DynaGraph import SPCDynamicGraph, MPCDynamicGraph
 from visualizer import Visualizer
 from properties_checker import PropertiesChecker
 
-def main():
+def main(test: str = "SPC"):
 
     G = nx.Graph()
     G.add_edges_from([
@@ -32,7 +32,8 @@ def main():
     print("          /        ")
     print("         F         \n")
     print("Where the, in the case of SPC test, the constraint path is bewteen the pair A-F")
-    print("and in the case of MPC test, pairs = [(A,F), (C,F)]\n")
+    print("and in the case of MPC test, pairs constraints are A-F and C-F\n")
+    
     
     test = "MPC"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint)
 
@@ -111,14 +112,16 @@ def main():
         timelineGen = MPCTimelineBlockGenerator(frames, nPairs, pathLifeTime, stability, mode, seed = 40)
         # timeline_block_generator = SPCTimelineBlockGenerator(frames, path_life, stability, mode)
         timeLine = timelineGen.generate()
-        print("Time line : ", timeLine, "\n")
-        print(timelineGen.computeStatistics(timeLine), "\n")
+        # print("Time line : ", timeLine, "\n")
+        # print(timelineGen.computeStatistics(timeLine), "\n")
 
         MPCDynaGA = MPCDynamicGraph()
         MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
+        MPCDynaGAset = MPCDynaGA.generate_unique_set(timeLine, MPCFrameSet, target_count=5, seed = 42, max_enumeration=1000)
 
         timeline_visualizer = Visualizer(timeLine)
         timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph)
+        timeline_visualizer.animate_random_dynamics(MPCDynaGAset, n=2, interval=1000)
         return
 
 
