@@ -49,7 +49,7 @@ def main(test: str = "SPC"):
         print("Limited Graph edges: ", limitedSPC.edges())
 
         frame_generator = FrameGenerator()
-        frame_generator.generate_frames(limitedSPC, S, D, trials=1000, p_edge=0.5)
+        frame_generator.generateSPCFrames(limitedSPC, S, D, trials=1000, p_edge=0.5)
 
         pathUpFrames = frame_generator.path_up_frames
         pathDownFrames = frame_generator.path_down_frames
@@ -98,7 +98,7 @@ def main(test: str = "SPC"):
         print("\n","Original Graph edges: ", G.edges())
         print("Limited Graph edges: ", limitedMPC.edges(), "\n")
         frame_generator = FrameGenerator()
-        MPCFrameSet = frame_generator.generate_frames_for_pairs(limitedMPC,
+        MPCFrameSet = frame_generator.generateMPCFrames(limitedMPC,
                                                         pairs,
                                                         trials=1000,
                                                         p_edge=0.5,

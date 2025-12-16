@@ -17,7 +17,7 @@ class FrameGenerator:
         self.path_up_frames = []
         self.path_down_frames = []
 
-    def generate_frames(self, limited_G: nx.Graph, s: str, d: str, trials: int = 1000, p_edge: float = 0.5) -> None:
+    def generateSPCFrames(self, limited_G: nx.Graph, s: str, d: str, trials: int = 1000, p_edge: float = 0.5) -> None:
         edges = list(limited_G.edges())
         for _ in range(trials):
             H = nx.Graph()
@@ -30,7 +30,7 @@ class FrameGenerator:
             else:
                 self.path_down_frames.append(H) 
 
-    def generate_frames_for_pairs(self,
+    def generateMPCFrames(self,
                                   limited_G: nx.Graph,
                                   pairs: List[Tuple[str, str]],
                                   trials: int = 1000,
