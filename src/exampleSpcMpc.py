@@ -8,8 +8,8 @@ and TimelineVisualizer classes.
 """
 import networkx as nx
 
-from SourceGraphAugmenter import SourceGraphAugmenter
-from frame_generator import FrameGenerator
+from sourceGraphAugmenter import SourceGraphAugmenter
+from frameGenerator import FrameGenerator
 from timeline_block_generator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
 from DynaGraph import SPCDynamicGraph, MPCDynamicGraph
 from visualizer import Visualizer
