@@ -35,7 +35,7 @@ def main(test: str = "SPC"):
     print("and in the case of MPC test, pairs constraints are A-F and C-F\n")
     
     
-    test = "MPC"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint)
+    test = "SPC"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint)
 
         # Single path constraint exemple
     if test == "SPC":

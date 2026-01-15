@@ -36,16 +36,10 @@ class Visualizer:
                                 node_size=300, node_color='skyblue', edge_color='gray',
                                 absent_node_color='lightgray', with_labels=True):
         """
-        Visualize a sequence (list) of networkx graphs as an animation using matplotlib.
-        - graphs: list of networkx.Graph (or DiGraph) objects, one per frame.
-        - interval: milliseconds between frames (default 1000 => 1 frame per second).
-        - loop: whether the animation repeats after the last frame.
-        - node_pos: optional dict {node: (x,y)} for consistent layout; if None, layout is computed
-                    from the union of all graphs.
-        - node_size, node_color, edge_color, absent_node_color, with_labels: drawing options.
-        Returns the matplotlib.animation.FuncAnimation object.
+        Animated top subplot (circular layout) per-frame; bottom arc timeline is static.
+        Bottom shows arcs for every edge occurrence and dots only for nodes that are connected
+        in that frame. A soft red vertical bar indicates the current frame (animated).
         """
-
         if not graphs:
             raise ValueError("graphs list is empty")
 
@@ -55,42 +49,130 @@ class Visualizer:
             union.add_nodes_from(g.nodes())
             union.add_edges_from(g.edges())
 
+        node_list = list(union.nodes())
+        n_nodes = len(node_list)
+
         # Compute positions once unless provided
         if node_pos is None:
-            # deterministic layout with seed for reproducibility
-            pos = nx.circular_layout(union)
+            pos = nx.circular_layout(union) if len(union) > 0 else {}
         else:
             pos = node_pos
 
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.set_title("Dynamic Graph Visualization")
-        ax.axis('off')
+        # figure with two stacked subplots
+        fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(6, 8),
+                                                gridspec_kw={'height_ratios': [2, 1]})
+        ax_top.set_title("Network (animated)")
+        ax_top.axis('off')
 
+        # bottom timeline static setup
+        ax_bottom.set_title("Connections over time (y = node index, x = frame)")
+        ax_bottom.set_xlabel("Frame")
+        ax_bottom.set_ylabel("Node")
+        if n_nodes > 0:
+            ax_bottom.set_ylim(-0.5, n_nodes - 0.5)
+            ax_bottom.set_yticks(range(n_nodes))
+            ax_bottom.set_yticklabels([str(n) for n in node_list])
+        else:
+            ax_bottom.set_ylim(-0.5, 0.5)
+        ax_bottom.set_xlim(-0.5, max(0, len(graphs) - 0.5))
+        ax_bottom.grid(True, axis='x', linestyle=':', alpha=0.4)
+
+        # helper mapping
+        node_to_index = {n: i for i, n in enumerate(node_list)}
+
+        # draw all arcs (one per edge occurrence) and prepare scatter points for nodes that are connected
+        from matplotlib.path import Path
+        from matplotlib.patches import PathPatch, Rectangle
+
+        scatter_x = []
+        scatter_y = []
+
+        for f_idx, G in enumerate(graphs):
+            # nodes that are connected in this frame: any node appearing in an edge
+            connected_nodes = set()
+            for u, v in G.edges():
+                connected_nodes.add(u)
+                connected_nodes.add(v)
+
+                # skip if nodes unknown
+                if u not in node_to_index or v not in node_to_index:
+                    continue
+                y1 = node_to_index[u]
+                y2 = node_to_index[v]
+
+                if y1 == y2:
+                    mid_y = y1
+                    rad_x = 0.4
+                    verts = [
+                        (f_idx - rad_x, mid_y),
+                        (f_idx, mid_y + 0.5),
+                        (f_idx + rad_x, mid_y),
+                    ]
+                else:
+                    mid_y = 0.5 * (y1 + y2)
+                    gap = abs(y2 - y1)
+                    rad_x = 0.2 + 0.12 * gap
+                    verts = [
+                        (f_idx, y1),
+                        (f_idx + rad_x, mid_y),
+                        (f_idx, y2),
+                    ]
+                codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
+                path = Path(verts, codes)
+                patch = PathPatch(path, edgecolor=edge_color, facecolor='none',
+                                  lw=1.2, alpha=0.9, zorder=1)
+                ax_bottom.add_patch(patch)
+
+            # add scatter points only for connected nodes in this frame
+            for n in connected_nodes:
+                if n in node_to_index:
+                    scatter_x.append(f_idx)
+                    scatter_y.append(node_to_index[n])
+
+        # plot all connection dots once (only when node is in an edge that frame)
+        if scatter_x:
+            ax_bottom.scatter(scatter_x, scatter_y, c=node_color, s=30, zorder=3)
+
+        # animated soft red vertical bar (covers one-frame width)
+        bar_width = 1.0
+        bar = Rectangle((-0.5, -0.5), width=bar_width, height=max(0, n_nodes),
+                        color='red', alpha=0.12, zorder=4)
+        ax_bottom.add_patch(bar)
+
+        # animation: update top subplot per-frame and move the red bar
         def update(frame_index):
-            ax.clear()
-            ax.set_title(f"Frame {frame_index + 1}/{len(graphs)}")
-            ax.axis('off')
-
+            # animate top: show nodes/edges for this frame using stable positions
             G = graphs[frame_index]
+            ax_top.clear()
+            ax_top.axis('off')
+            ax_top.set_title(f"Frame {frame_index + 1}/{len(graphs)}")
 
             # Node colors: highlight nodes present in this frame, fade absent ones
-            node_list = list(union.nodes())
-            node_colors = [
+            top_node_colors = [
                 node_color if (n in G.nodes()) else absent_node_color
                 for n in node_list
             ]
 
-            # Draw nodes from the union so positions stay stable
-            nx.draw_networkx_nodes(union, pos, nodelist=node_list,
-                                   node_color=node_colors, node_size=node_size, ax=ax)
-            # Draw edges only for current frame (G)
-            nx.draw_networkx_edges(G, pos, edge_color=edge_color, ax=ax)
-            if with_labels:
-                nx.draw_networkx_labels(union, pos, ax=ax)
+            if node_list:
+                nx.draw_networkx_nodes(union, pos, nodelist=node_list,
+                                       node_color=top_node_colors, node_size=node_size, ax=ax_top)
+            # draw only edges present in the current frame
+            if G.number_of_edges() > 0:
+                nx.draw_networkx_edges(G, pos, edge_color=edge_color, ax=ax_top)
+            if with_labels and node_list:
+                nx.draw_networkx_labels(union, pos, ax=ax_top)
+
+            # move bar on bottom timeline
+            x = frame_index - 0.5  # align bar to frame column
+            bar.set_x(x)
+
+            # no blitting; return nothing
+            return []
 
         ani = FuncAnimation(fig, update, frames=range(len(graphs)),
-                            interval=interval, repeat=loop)
+                            interval=interval, repeat=loop, blit=False)
 
+        plt.tight_layout()
         plt.show()
         return ani
 
@@ -108,19 +190,12 @@ class Visualizer:
                                 with_labels=True):
         """
         Pick up to `n` dynamics from `dynamics` (randomly, deterministically with seed)
-        and animate them side-by-side. Each subplot cycles through the frames of its
-        dynamic; shorter dynamics are looped (frame index modulo length).
+        and animate them side-by-side. Each column shows:
+          - top: animated circular layout for that dynamic (per-frame)
+          - bottom: static arc timeline (all arcs/dots drawn once) with a soft red
+                    vertical bar that moves to indicate the current frame.
 
-        Parameters:
-          - dynamics: list of DynamicGraph objects (attr `.DynamicGraph`) or lists of nx.Graph
-          - n: number of dynamics to select and show (default 5)
-          - interval: ms between frames (default 1000ms -> 1fps)
-          - loop: whether animation repeats after last frame
-          - seed: optional int to make selection deterministic
-          - figsize: figure size (width, height)
-          - drawing options: node_size, node_color, absent_node_color, edge_color, with_labels
-
-        Returns matplotlib.animation.FuncAnimation
+        Shorter dynamics are looped (frame index modulo length).
         """
         if seed is not None:
             random.seed(seed)
@@ -145,6 +220,9 @@ class Visualizer:
         chosen_indices = random.sample(range(len(pool)), count)
 
         # Precompute per-dynamic union graph, positions and node lists to keep layout stable
+        from matplotlib.path import Path
+        from matplotlib.patches import PathPatch, Rectangle
+
         dyn_info = []
         for idx in chosen_indices:
             frames = pool[idx]
@@ -154,41 +232,133 @@ class Visualizer:
                 union.add_edges_from(f.edges())
             pos = nx.circular_layout(union) if len(union) > 0 else {}
             node_list = list(union.nodes())
+            node_to_index = {n: i for i, n in enumerate(node_list)}
+            # prepare static timeline patches and scatter points for this dynamic
+            patches = []
+            scatter_x = []
+            scatter_y = []
+            for f_idx, G in enumerate(frames):
+                connected_nodes = set()
+                for u, v in G.edges():
+                    connected_nodes.add(u)
+                    connected_nodes.add(v)
+                    if u not in node_to_index or v not in node_to_index:
+                        continue
+                    y1 = node_to_index[u]
+                    y2 = node_to_index[v]
+                    if y1 == y2:
+                        mid_y = y1
+                        rad_x = 0.4
+                        verts = [
+                            (f_idx - rad_x, mid_y),
+                            (f_idx, mid_y + 0.5),
+                            (f_idx + rad_x, mid_y),
+                        ]
+                    else:
+                        mid_y = 0.5 * (y1 + y2)
+                        gap = abs(y2 - y1)
+                        rad_x = 0.2 + 0.12 * gap
+                        verts = [
+                            (f_idx, y1),
+                            (f_idx + rad_x, mid_y),
+                            (f_idx, y2),
+                        ]
+                    codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
+                    path = Path(verts, codes)
+                    patches.append(PathPatch(path, edgecolor=edge_color, facecolor='none',
+                                             lw=1.2, alpha=0.9, zorder=1))
+                # scatter only nodes that are connected in this frame
+                for n in connected_nodes:
+                    if n in node_to_index:
+                        scatter_x.append(f_idx)
+                        scatter_y.append(node_to_index[n])
+
             dyn_info.append({
                 "frames": frames,
                 "union": union,
                 "pos": pos,
                 "node_list": node_list,
-                "length": len(frames)
+                "node_to_index": node_to_index,
+                "length": len(frames),
+                "patches": patches,
+                "scatter_x": scatter_x,
+                "scatter_y": scatter_y,
+                "n_nodes": len(node_list),
+                "bar": None,  # will be set after axes creation
             })
 
         max_frames = max(info["length"] for info in dyn_info)
 
-        fig, axes = plt.subplots(1, count, figsize=figsize)
+        # create 2 x count axes: top row animated networks, bottom row static timelines
+        fig, axes = plt.subplots(2, count, figsize=figsize,
+                                 gridspec_kw={'height_ratios': [2, 1]})
+        # normalize axes into two lists (top_axes, bottom_axes)
         if count == 1:
-            axes = [axes]
+            top_axes = [axes[0]]
+            bottom_axes = [axes[1]]
+        else:
+            top_axes = axes[0]
+            bottom_axes = axes[1]
 
+        # draw static content for each column (bottom timeline) and configure axes
+        for ax_top, ax_bottom, info in zip(top_axes, bottom_axes, dyn_info):
+            ax_top.axis('off')
+            # bottom axis setup
+            n_nodes = info["n_nodes"]
+            node_list = info["node_list"]
+            ax_bottom.set_title("Connections over time")
+            ax_bottom.set_xlabel("Frame")
+            ax_bottom.set_ylabel("Node")
+            if n_nodes > 0:
+                ax_bottom.set_ylim(-0.5, n_nodes - 0.5)
+                ax_bottom.set_yticks(range(n_nodes))
+                ax_bottom.set_yticklabels([str(n) for n in node_list])
+            else:
+                ax_bottom.set_ylim(-0.5, 0.5)
+            ax_bottom.set_xlim(-0.5, max(0, info["length"] - 0.5))
+            ax_bottom.grid(True, axis='x', linestyle=':', alpha=0.4)
+
+            # add all prepared patches
+            for p in info["patches"]:
+                ax_bottom.add_patch(p)
+            # add scatter of connected nodes (one dot per occurrence)
+            if info["scatter_x"]:
+                ax_bottom.scatter(info["scatter_x"], info["scatter_y"], c=node_color, s=30, zorder=3)
+            # add animated bar (one per dynamic)
+            bar = Rectangle((-0.5, -0.5), width=1.0, height=max(0, n_nodes),
+                            color='red', alpha=0.12, zorder=4)
+            ax_bottom.add_patch(bar)
+            info["bar"] = bar
+
+        # animation: update top row per-frame and move each bottom bar
         def update(frame_index):
-            for ax, info in zip(axes, dyn_info):
-                ax.clear()
-                ax.axis('off')
-                fi = frame_index % info["length"]  # loop per dynamic
+            for ax_top, info in zip(top_axes, dyn_info):
+                ax_top.clear()
+                ax_top.axis('off')
+                fi = frame_index % info["length"]
                 G = info["frames"][fi]
                 pos = info["pos"]
                 node_list = info["node_list"]
 
-                ax.set_title(f"Dyn frame {fi}")
+                ax_top.set_title(f"Dyn frame {fi}")
 
                 node_colors = [node_color if (n in G.nodes()) else absent_node_color for n in node_list]
 
-                # draw nodes and edges for this subplot
                 if node_list:
                     nx.draw_networkx_nodes(info["union"], pos, nodelist=node_list,
-                                           node_color=node_colors, node_size=node_size, ax=ax)
+                                           node_color=node_colors, node_size=node_size, ax=ax_top)
                 # draw only edges present in the current frame
-                nx.draw_networkx_edges(G, pos, edge_color=edge_color, ax=ax)
+                if G.number_of_edges() > 0:
+                    nx.draw_networkx_edges(G, pos, edge_color=edge_color, ax=ax_top)
                 if with_labels and node_list:
-                    nx.draw_networkx_labels(info["union"], pos, ax=ax)
+                    nx.draw_networkx_labels(info["union"], pos, ax=ax_top)
+
+                # move corresponding bar on bottom timeline
+                x = fi - 0.5
+                info["bar"].set_x(x)
+
+            # no blitting; return nothing
+            return []
 
         ani = FuncAnimation(fig, update, frames=range(max_frames),
                             interval=interval, repeat=loop)

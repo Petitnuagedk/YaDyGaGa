@@ -84,8 +84,8 @@ class PropertiesChecker:
         stability_ratio = None
         possible_changes = len(graphs)/2
         if frames_path_exists > 0:
-            print(stateChange)
-            print(len(graphs))
+            #print(stateChange)
+            #print(len(graphs))
             stability_ratio = 1 - (stateChange / possible_changes)
 
         return {
