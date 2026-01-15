@@ -10,10 +10,10 @@ import networkx as nx
 
 from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
-from timeline_block_generator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
-from DynaGraph import SPCDynamicGraph, MPCDynamicGraph
+from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
+from dynaGraph import SPCDynamicGraph, MPCDynamicGraph
 from visualizer import Visualizer
-from properties_checker import PropertiesChecker
+from propertiesChecker import PropertiesChecker
 
 def main(test: str = "SPC"):
 
