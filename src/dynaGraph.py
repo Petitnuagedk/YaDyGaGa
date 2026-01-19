@@ -4,6 +4,16 @@ import networkx as nx
 import itertools
 import math
 
+class dynamicGraph:
+    """
+    Base class for DynamicGraph structures.
+    """
+    def __init__(self):
+        self.DynamicGraph = []
+    
+    def appendGraph(self, graph: nx.Graph):
+        self.DynamicGraph.append(graph)
+
 class SPCDynamicGraph:
     """
     Assembles generated timeline blocks into a cohesive timeline called a DynamicGraph.

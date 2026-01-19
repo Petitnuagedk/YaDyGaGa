@@ -11,7 +11,7 @@ import networkx as nx
 from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
 from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
-from dynaGraph import SPCDynamicGraph, MPCDynamicGraph
+from dynaGraph import dynamicGraph, SPCDynamicGraph, MPCDynamicGraph
 from dyCoDeTa import DynaGraphCommuDetection
 from visualizer import Visualizer
 from propertiesChecker import PropertiesChecker
@@ -36,7 +36,7 @@ def main(test: str = "SPC"):
     print("and in the case of MPC test, pairs constraints are A-F and C-F\n")
     
     
-    test = "SPC"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint)
+    test = "Dynamic community detection"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint) "Dynamic community detection" (self explanatory)
     viz = False
 
         # Single path constraint exemple
@@ -87,8 +87,12 @@ def main(test: str = "SPC"):
         communities = detector.detectStatCommunities()
         print("Detected communities fro frame 1: ", communities[0])
         comm_mapper = detector.unitCirclePlacement()
-        #print("Community based node placement for frame 1: ", comm_mapper)
+        print("Community based node placement for frame 1: ", comm_mapper)
         #detector.plotCommuMapper()
+        detector.HspacePlacement(frame_index=0)
+        print("Community positions in H space for frame 1: ", detector.HspaceMapper[0])
+        detector.plotHspacePlacement(frame_index=0)
+
 
         if viz == True:
             timeline_visualizer = Visualizer(timeLine)
@@ -135,6 +139,47 @@ def main(test: str = "SPC"):
             timeline_visualizer.animate_random_dynamics(MPCDynaGAset, n=2, interval=1000)
         return
 
+    if test == "Dynamic community detection":
+        DynaGa = dynamicGraph()
+        G1 = nx.Graph()
+        G1.add_edges_from([("A", "D"), ("A", "E"), ("A", "B"), ("D", "B"),("D", "E"),("B", "E"), ("B", "F"),("B","C"),("C", "F"),("C","E"),("E","F"),
+                           ("E","G"),("G","H"),("G","J"),("G","I"),("H","I"),("I","J"),("H","J"),
+                           ("K","L"),("K","M"),("K","N"),("K","O"),("L","M"),("M","N"),("N","O"),("O","L"),("L","N"),("M","O"),("K","C"),("N","J")
+                           ])
+        G2 = nx.Graph()
+        G2.add_edges_from([("A", "D"), ("A", "E"), ("A", "B"), ("D", "B"),("D", "E"),("B", "E"), ("B", "F"),("B","C"),("C", "F"),("C","E"),("E","F"),
+                           ("E","G"),("G","H"),("G","J"),("G","I"),("H","I"),("I","J"),("H","J"),
+                           ("K","L"),("K","M"),("K","N"),("K","O"),("L","M"),("M","N"),("N","O"),("O","L"),("L","N"),("M","O"),("K","C"),("N","J")
+                           ])
+        G3 = nx.Graph()
+        G3.add_edges_from([("A", "D"), ("A", "E"), ("A", "B"), ("D", "B"),("D", "E"),("B", "E"), ("B", "F"),("B","C"),("C", "F"),("C","E"),("E","F"),
+                           ("E","G"),("G","H"),("O","J"),("G","I"),("H","I"),("L","J"),("M","J"),
+                           ("K","L"),("K","M"),("K","N"),("K","O"),("L","M"),("M","N"),("N","O"),("O","L"),("L","N"),("M","O"),("K","C"),("N","J")
+                           ])
+        G4 = nx.Graph()
+        G4.add_edges_from([("A", "D"), ("A", "E"), ("A", "B"), ("D", "B"),("D", "E"),("B", "E"), ("B", "F"),("B","C"),("C", "F"),("C","E"),("E","F"),
+                           ("E","G"),("G","H"),("G","J"),("G","I"),("H","I"),("I","J"),("H","J"),
+                           ("K","L"),("K","M"),("K","N"),("K","O"),("L","M"),("M","N"),("N","O"),("O","L"),("L","N"),("M","O"),("K","C"),("N","J")
+                           ])
+        DynaGa.appendGraph(G1)
+        DynaGa.appendGraph(G2)
+        DynaGa.appendGraph(G3)
+        DynaGa.appendGraph(G4)
+        
+        print("Dynamic Community Detection Test")
+        # Using the SPCDynamicGraph from the previous SPC test
+        detector = DynaGraphCommuDetection(DynaGa.DynamicGraph, method="louvain", seed = 444)
+        communities = detector.detectStatCommunities()
+        print("Detected communities for frame 1: ", communities[0])
+        comm_mapper = detector.unitCirclePlacement()
+        print("Community based node placement for frame 1: ", comm_mapper)
+        #detector.plotCommuMapper()
+        detector.HspacePlacement(frame_index=0)
+        print("Community positions in H space for frame 1: ", detector.HspaceMapper[0])
+        #detector.plotHspacePlacement(frame_index=0)
+        detector.HspacePropagation(threshold=0.5)
+        detector.plotDynaCommunity()
+        return
 
 
 if __name__ == "__main__":
