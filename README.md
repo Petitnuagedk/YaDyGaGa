@@ -3,20 +3,6 @@
 YaDyGaGa is a small toolkit to generate, assemble and visualize dynamic graphs (sequences of networkx Graph objects).  
 It is aimed at experimentation with path uptime, stability and multi-pair scenarios where each frame is a sampled subgraph.
 
-## Key components (current)
-- FrameGenerator — sample frames from a base graph (produce up/down frames for pairs).
-- SourceGraphAugmenter — greedy, seeded augmentation of a base graph while keeping path baselines.
-- TimelineBlockGenerator (SPC / MPC) — create block-structured timelines (single-pair or multi-pair).
-- DynaGraph (SPC / MPC) — assemble timelines into concrete dynamic graph sequences selected from frame sets.
-- PropertiesChecker — compute metrics: uptime, lifetime, stability, shortest-path length statistics.
-- DynaGraphCommuDetection — static + dynamic community detection helpers:
-  - detectStatCommunities(): detect communities per frame (Louvain supported).
-  - unitCirclePlacement(): deterministic placement of nodes on a unit circle for visualization.
-  - HspacePlacement(frame): compute community H-space positions (sum of member node coordinates).
-  - HspacePropagation(threshold): propagate community identities over time by matching H-space positions across frames.
-  - plotCommuMapper(), plotHspacePlacement(), plotDynaCommunity(): static plots and animated H-space visualization.
-- Visualizer — static/animated visualization of dynamics using matplotlib & networkx.
-
 ## Requirements
 - Python 3.8+
 - numpy
