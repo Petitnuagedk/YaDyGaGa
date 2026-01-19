@@ -15,21 +15,6 @@ pip install -r requirements.txt
 ```
 (ensure a GUI backend for matplotlib when using animation, or save the animation to file)
 
-## Quick start examples
-
-Typical flow to detect and animate communities from a dynamic graph (dynamic_graph is a list of networkx.Graph frames):
-
-```python
-from src.dyCoDeTa import DynaGraphCommuDetection
-
-detector = DynaGraphCommuDetection(dynamic_graph, method="louvain", seed=444)
-detector.detectStatCommunities()      # detect communities per frame
-detector.unitCirclePlacement()        # place nodes deterministically for visualization
-detector.HspacePropagation(threshold=0.2)  # compute H-space and propagate community ids
-ani = detector.plotDynaCommunity(interval=600, annote=True)  # show/save animation
-```
-
-
 
 ## Creating a dynamic graph
 
@@ -80,6 +65,20 @@ detector.detectStatCommunities()
 detector.unitCirclePlacement()
 detector.HspacePropagation(threshold=0.2)
 ani = detector.plotDynaCommunity(interval=600, annote=True)
+```
+
+## Examples of dynamic communities tools
+
+Typical flow to detect and animate communities from a dynamic graph (dynamic_graph is a list of networkx.Graph frames):
+
+```python
+from src.dyCoDeTa import DynaGraphCommuDetection
+
+detector = DynaGraphCommuDetection(dynamic_graph, method="louvain", seed=444)
+detector.detectStatCommunities()      # detect communities per frame
+detector.unitCirclePlacement()        # place nodes deterministically for visualization
+detector.HspacePropagation(threshold=0.2)  # compute H-space and propagate community ids
+ani = detector.plotDynaCommunity(interval=600, annote=True)  # show/save animation
 ```
 
 
