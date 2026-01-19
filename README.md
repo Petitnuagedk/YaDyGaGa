@@ -1,18 +1,25 @@
 # YaDyGaGa
 
-YaDyGaGa is a small toolkit to generate, assemble and visualize dynamic graphs (sequences of networkx graphs).  
+YaDyGaGa is a small toolkit to generate, assemble and visualize dynamic graphs (sequences of networkx Graph objects).  
 It is aimed at experimentation with path uptime, stability and multi-pair scenarios where each frame is a sampled subgraph.
 
-## Key components
+## Key components (current)
 - FrameGenerator — sample frames from a base graph (produce up/down frames for pairs).
 - SourceGraphAugmenter — greedy, seeded augmentation of a base graph while keeping path baselines.
 - TimelineBlockGenerator (SPC / MPC) — create block-structured timelines (single-pair or multi-pair).
 - DynaGraph (SPC / MPC) — assemble timelines into concrete dynamic graph sequences selected from frame sets.
 - PropertiesChecker — compute metrics: uptime, lifetime, stability, shortest-path length statistics.
+- DynaGraphCommuDetection — static + dynamic community detection helpers:
+  - detectStatCommunities(): detect communities per frame (Louvain supported).
+  - unitCirclePlacement(): deterministic placement of nodes on a unit circle for visualization.
+  - HspacePlacement(frame): compute community H-space positions (sum of member node coordinates).
+  - HspacePropagation(threshold): propagate community identities over time by matching H-space positions across frames.
+  - plotCommuMapper(), plotHspacePlacement(), plotDynaCommunity(): static plots and animated H-space visualization.
 - Visualizer — static/animated visualization of dynamics using matplotlib & networkx.
 
 ## Requirements
 - Python 3.8+
+- numpy
 - networkx
 - matplotlib
 
@@ -20,38 +27,28 @@ Install:
 ```
 pip install -r requirements.txt
 ```
+(ensure a GUI backend for matplotlib when using animation, or save the animation to file)
 
-## Quick start (example workflow)
-1. Build or load a base graph G.
-2. Optionally augment it with SourceGraphAugmenter to produce a limited edge set.
-3. Use FrameGenerator.generate_frames_for_pairs(...) to produce a frame pool and a map of cases (per-status frame indices).
-4. Create a timeline using TimelineBlockGenerator / MPCTimelineBlockGenerator.
-5. Assemble a dynamic sequence with DynaGraph.buildDynaGraph(...) using the timeline and frame set.
-6. Inspect metrics with PropertiesChecker and visualize with Visualizer.animate_random_dynamics or visualize_dynamic_graph.
+## Quick start examples
 
-Example (rough):
+1) Typical flow to detect and animate communities from a dynamic graph (dynamic_graph is a list of networkx.Graph frames):
+
 ```python
-from src import SourceGraphAugmenter, FrameGenerator, MPCTimelineBlockGenerator, MPCDynamicGraph, Visualizer
+from src.dyCoDeTa import DynaGraphCommuDetection
 
-# 1) prepare base graph G...
-limited = SourceGraphAugmenter.augmentBaseGraph(G, pairs=[("A","F"),("C","F")], seed=1)
-
-# 2) generate frame set for pairs
-fg = FrameGenerator()
-frame_set = fg.generate_frames_for_pairs(limited, pairs=[("A","F"),("C","F")], trials=1000, p_edge=0.5, seed=1)
-
-# 3) build timeline and assemble a dynamic
-mpc = MPCTimelineBlockGenerator(frames=50, n_pairs=2, path_life=0.5, stability=1.0, mode="indep", seed=1)
-timeline = mpc.generate()
-dyn_builder = MPCDynamicGraph()
-dynamic = dyn_builder.buildDynaGraph(timeline, frame_set, seed=1, no_double=True)
-
-# 4) visualize
-viz = Visualizer(timeline=None)  # timeline param optional for some methods
-viz.animate_random_dynamics([dynamic], n=1, interval=500)
+detector = DynaGraphCommuDetection(dynamic_graph, method="louvain", seed=444)
+detector.detectStatCommunities()      # detect communities per frame
+detector.unitCirclePlacement()        # place nodes deterministically for visualization
+detector.HspacePropagation(threshold=0.2)  # compute H-space and propagate community ids
+ani = detector.plotDynaCommunity(interval=600, annote=True)  # show/save animation
 ```
 
-## Testing
+2) Basic usage notes
+- H-space position for a community is the vector sum of its members' coordinates. Example: nodes at (0.8,0.6) and (0.6,0.8) give community H=(1.4,1.4).
+- Communities across consecutive frames are considered the same when their H-space Euclidean distance is <= threshold (HspacePropagation).
+- The node placement (unitCirclePlacement) is deterministic given the first frame's node ordering and the seed for reproducibility.
+
+## Tests
 Add unit tests under `tests/` and run with pytest:
 ```
 pytest
