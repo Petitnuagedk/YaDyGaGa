@@ -12,6 +12,7 @@ from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
 from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
 from dynaGraph import SPCDynamicGraph, MPCDynamicGraph
+from dyCoDeTa import DynaGraphCommuDetection
 from visualizer import Visualizer
 from propertiesChecker import PropertiesChecker
 
@@ -36,6 +37,7 @@ def main(test: str = "SPC"):
     
     
     test = "SPC"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint)
+    viz = False
 
         # Single path constraint exemple
     if test == "SPC":
@@ -81,9 +83,17 @@ def main(test: str = "SPC"):
 
         print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
 
-        timeline_visualizer = Visualizer(timeLine)
-        timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
-        timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, interval=1000)
+        detector = DynaGraphCommuDetection(DynaGA.DynamicGraph, method="louvain", seed = 444)
+        communities = detector.detectStatCommunities()
+        print("Detected communities fro frame 1: ", communities[0])
+        comm_mapper = detector.unitCirclePlacement()
+        #print("Community based node placement for frame 1: ", comm_mapper)
+        #detector.plotCommuMapper()
+
+        if viz == True:
+            timeline_visualizer = Visualizer(timeLine)
+            timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
+            timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, interval=1000)
 
         return
 
@@ -119,9 +129,10 @@ def main(test: str = "SPC"):
         MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
         MPCDynaGAset = MPCDynaGA.generate_unique_set(timeLine, MPCFrameSet, target_count=5, seed = 42, max_enumeration=1000)
 
-        timeline_visualizer = Visualizer(timeLine)
-        timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph)
-        timeline_visualizer.animate_random_dynamics(MPCDynaGAset, n=2, interval=1000)
+        if viz == True:
+            timeline_visualizer = Visualizer(timeLine)
+            timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph)
+            timeline_visualizer.animate_random_dynamics(MPCDynaGAset, n=2, interval=1000)
         return
 
 
