@@ -34,12 +34,6 @@ ani = detector.plotDynaCommunity(interval=600, annote=True)  # show/save animati
 - Communities across consecutive frames are considered the same when their H-space Euclidean distance is <= threshold (HspacePropagation).
 - The node placement (unitCirclePlacement) is deterministic given the first frame's node ordering and the seed for reproducibility.
 
-## Tests
-Add unit tests under `tests/` and run with pytest:
-```
-pytest
-```
-
 ## Contributing
 - Follow existing module structure and add unit tests for new behavior.
 - Keep augmentation deterministic with seeds where reproducibility is needed.
