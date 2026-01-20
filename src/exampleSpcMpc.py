@@ -12,7 +12,7 @@ from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
 from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
 from dynaGraph import dynamicGraph, SPCDynamicGraph, MPCDynamicGraph
-from dyCoDeTa import DynaGraphCommuDetection
+from dyCoDeTa import DynaGraphCommuDetection,AnalyzerDynaCommu
 from visualizer import Visualizer
 from propertiesChecker import PropertiesChecker
 
@@ -173,12 +173,21 @@ def main(test: str = "SPC"):
         print("Detected communities for frame 1: ", communities[0])
         comm_mapper = detector.unitCirclePlacement()
         print("Community based node placement for frame 1: ", comm_mapper)
-        detector.plotCommuMapper()
+        if viz == True:
+            detector.plotCommuMapper()
         detector.HspacePlacement(frame_index=0)
         print("Community positions in H space for frame 1: ", detector.HspaceMapper[0])
-        detector.plotHspacePlacement(frame_index=0)
+        if viz == True:
+            detector.plotHspacePlacement(frame_index=0)
         detector.HspacePropagation(threshold=0.5)
-        detector.plotDynaCommunity()
+        if viz == True:
+            detector.plotDynaCommunity()
+
+        #Exemple of usage of AnalyzerDynaCommu
+        analyzer = AnalyzerDynaCommu(detector.dynaCommunity)
+        dynaCommulifetime = analyzer.commuLifeTime()
+        print("Dynamic community lifetime: ", dynaCommulifetime)
+        
         return
 
 

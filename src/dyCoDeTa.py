@@ -296,3 +296,95 @@ class DynaGraphCommuDetection:
         plt.axis('equal')
         plt.show()
         return ani
+
+class AnalyzerDynaCommu:
+    def __init__(self, dynaCommunity = []):
+        self.dynaCommunity = dynaCommunity # [[C1_t1, C2_t1, ...], [C1_t2, C2_t2, ...], ...] where Ci_tj is the community i at time j
+
+    
+
+    def commuLifeTime(self):
+        """
+        Analyze the lifetime of communities over time.
+        Returns a list of dicts: {'id': int, 'start_frame': int, 'end_frame': int, 'lifetime': int}
+        """
+        if not self.dynaCommunity:
+            raise RuntimeError("No dynamic community data to analyze.")
+
+        comm_lifetimes = {}
+        for fi, frame in enumerate(self.dynaCommunity):
+            for entry in frame:
+                cid = entry['id']
+                if cid not in comm_lifetimes:
+                    comm_lifetimes[cid] = {'start_frame': fi, 'end_frame': fi}
+                else:
+                    comm_lifetimes[cid]['end_frame'] = fi
+
+        # convert to list with lifetime calculation
+        result = []
+        for cid, times in comm_lifetimes.items():
+            lifetime = times['end_frame'] - times['start_frame'] + 1
+            result.append({
+                'id': cid,
+                'start_frame': times['start_frame'],
+                'end_frame': times['end_frame'],
+                'lifetime': lifetime
+            })
+        return result
+
+    def flexibility(self):
+        """
+        Compute the flexibility of nodes in changing community membership over time.
+        Returns a dict: {node: flexibility_score}
+        """
+        if not self.dynaCommunity:
+            raise RuntimeError("No dynamic community data to analyze.")
+
+        node_membership = {}
+        total_frames = len(self.dynaCommunity)
+
+        for fi, frame in enumerate(self.dynaCommunity):
+            for entry in frame:
+                cid = entry['id']
+                for node in entry['members']:
+                    if node not in node_membership:
+                        node_membership[node] = []
+                    node_membership[node].append((fi, cid))
+
+        flexibility_scores = {}
+        for node, memberships in node_membership.items():
+            changes = 0
+            last_cid = None
+            for fi, cid in memberships:
+                if last_cid is not None and cid != last_cid:
+                    changes += 1
+                last_cid = cid
+            flexibility_scores[node] = changes / (total_frames - 1) if total_frames > 1 else 0.0
+
+        return flexibility_scores
+    
+    def promiscuity(self):
+        """
+        Compute the promiscuity of nodes in terms of the number of different communities they belong to over time.
+        Returns a dict: {node: promiscuity_score}
+        """
+        if not self.dynaCommunity:
+            raise RuntimeError("No dynamic community data to analyze.")
+
+        node_communities = {}
+        total_frames = len(self.dynaCommunity)
+
+        for fi, frame in enumerate(self.dynaCommunity):
+            for entry in frame:
+                cid = entry['id']
+                for node in entry['members']:
+                    if node not in node_communities:
+                        node_communities[node] = set()
+                    node_communities[node].add(cid)
+
+        promiscuity_scores = {}
+        for node, comms in node_communities.items():
+            promiscuity_scores[node] = len(comms) / total_frames if total_frames > 0 else 0.0
+
+        return promiscuity_scores
+    
