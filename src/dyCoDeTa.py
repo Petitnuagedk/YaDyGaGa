@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import colors as mcolors
+import matplotlib.patches as mpatches
 
 class DynaGraphCommuDetection:
     def __init__(self, dynamic_graph, method="louvain", seed = 444):
@@ -34,7 +35,7 @@ class DynaGraphCommuDetection:
         for comm in fstFrameCommu:
             for node in comm:
                 index = list(self.dynamic_graph[0].nodes()).index(node)
-                print(index)
+                #print(index)
                 angle = 2 * np.pi * index / numNodes
                 x = 0.5 + 0.4 * np.math.cos(angle)
                 y = 0.5 + 0.4 * np.math.sin(angle)
@@ -73,15 +74,38 @@ class DynaGraphCommuDetection:
 
     def plotCommuMapper(self):
         comm_mapper = self.unitCirclePlacement()
-        x_vals = [pos[0] for pos in comm_mapper.values()]
-        y_vals = [pos[1] for pos in comm_mapper.values()]
         labels = list(comm_mapper.keys())
+        x_vals = [comm_mapper[l][0] for l in labels]
+        y_vals = [comm_mapper[l][1] for l in labels]
+
+        # ensure communities are detected
+        if not self.community:
+            self.detectStatCommunities()
+        fst_comms = self.community[0] if self.community else []
+
+        # map node -> community index (first-frame membership)
+        node_to_comm = {}
+        for ci, comm in enumerate(fst_comms):
+            for n in comm:
+                node_to_comm[n] = ci
+
+        num_comms = max(1, len(fst_comms))
+        base_cmap = plt.cm.get_cmap('tab10')
+        comm_colors = [base_cmap(i % base_cmap.N) for i in range(num_comms)]
+
+        # build color list aligned with labels
+        node_colors = [comm_colors[node_to_comm.get(n, 0)] for n in labels]
 
         plt.figure(figsize=(6, 6))
-        plt.scatter(x_vals, y_vals)
+        ax = plt.gca()
+        # add unit circle (center 0.5,0.5 radius 0.4) as thin hard-grey line behind points
+        circ = mpatches.Circle((0.5, 0.5), 0.4, edgecolor='0.3', facecolor='none', linewidth=0.8, zorder=0)
+        ax.add_patch(circ)
+
+        plt.scatter(x_vals, y_vals, c=node_colors, s=100, edgecolors='k', linewidths=0.5, zorder=2)
 
         for label, x, y in zip(labels, x_vals, y_vals):
-            plt.text(x, y, label, fontsize=9, ha='right')
+            plt.text(x, y, label, fontsize=9, ha='right', zorder=3)
 
         plt.title("Node Placement Based on Communities")
         plt.xlabel("X")
@@ -99,10 +123,15 @@ class DynaGraphCommuDetection:
         y_vals = [pos[1] for pos in comm_positions]
 
         plt.figure(figsize=(6, 6))
-        plt.scatter(x_vals, y_vals)
+        ax = plt.gca()
+        # add unit circle (center 0.5,0.5 radius 0.4) as thin hard-grey line behind points
+        circ = mpatches.Circle((0.5, 0.5), 0.4, edgecolor='0.3', facecolor='none', linewidth=0.8, zorder=0)
+        ax.add_patch(circ)
+
+        plt.scatter(x_vals, y_vals, zorder=2)
 
         for i, (x, y) in enumerate(comm_positions):
-            plt.text(x, y, f"C{i+1}", fontsize=9, ha='right')
+            plt.text(x, y, f"C{i+1}", fontsize=9, ha='right', zorder=3)
 
         plt.title(f"Community Positions in H Space (Frame {frame_index})")
         plt.xlabel("H-X")

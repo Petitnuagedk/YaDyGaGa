@@ -173,10 +173,10 @@ def main(test: str = "SPC"):
         print("Detected communities for frame 1: ", communities[0])
         comm_mapper = detector.unitCirclePlacement()
         print("Community based node placement for frame 1: ", comm_mapper)
-        #detector.plotCommuMapper()
+        detector.plotCommuMapper()
         detector.HspacePlacement(frame_index=0)
         print("Community positions in H space for frame 1: ", detector.HspaceMapper[0])
-        #detector.plotHspacePlacement(frame_index=0)
+        detector.plotHspacePlacement(frame_index=0)
         detector.HspacePropagation(threshold=0.5)
         detector.plotDynaCommunity()
         return
