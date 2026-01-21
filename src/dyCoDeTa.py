@@ -388,3 +388,65 @@ class AnalyzerDynaCommu:
 
         return promiscuity_scores
     
+class visualizer:
+    def __init__(self, dynamic_graph = [],flexibilityScores ={}):
+        self.dynamic_graph = dynamic_graph
+        self.flexibilityScores = flexibilityScores
+    
+    def flexibilityVisualization(self):
+        """
+        Visualize node flexibility scores on the dynamic graph.
+        Merge all frames into a single plot: union of nodes/edges, node colors show flexibility.
+        """
+        if not self.dynamic_graph:
+            raise RuntimeError("No dynamic graph data to visualize.")
+
+        # build union graph of all frames (nodes + edges present in any frame)
+        union_g = nx.Graph()
+        for G in self.dynamic_graph:
+            union_g.add_nodes_from(G.nodes())
+            union_g.add_edges_from(G.edges())
+
+        if union_g.number_of_nodes() == 0:
+            raise RuntimeError("Union graph is empty, nothing to visualize.")
+
+        # fixed layout for consistency across frames
+        pos = nx.spring_layout(union_g, seed=42)
+
+        # prepare scalar values (flexibility) per node in union graph
+        nodes = list(union_g.nodes())
+        vals = [self.flexibilityScores.get(n, 0.0) for n in nodes]
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        # draw faint union edges as background context
+        nx.draw_networkx_edges(union_g, pos=pos, edge_color='0.8', alpha=0.5, ax=ax)
+
+        # draw nodes colored by flexibility score using a colormap
+        nodes_collection = nx.draw_networkx_nodes(
+            union_g,
+            pos=pos,
+            nodelist=nodes,
+            node_size=500,
+            node_color=vals,
+            cmap=plt.cm.viridis,
+            vmin=0.0,
+            vmax=1.0,
+            ax=ax,
+            edgecolors='k',
+            linewidths=0.5,
+            alpha=1.0
+        )
+
+        # draw labels
+        nx.draw_networkx_labels(union_g, pos=pos, labels={n: n for n in nodes}, font_size=9, ax=ax)
+
+        ax.set_title("Node Flexibility (merged frames)")
+        ax.axis('off')
+
+        # colorbar anchored to the axes via fig.colorbar
+        sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=plt.Normalize(vmin=0.0, vmax=1.0))
+        sm.set_array(vals)
+        cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label('Flexibility Score')
+
+        plt.show()

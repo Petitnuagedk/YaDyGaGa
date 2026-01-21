@@ -12,7 +12,7 @@ from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
 from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
 from dynaGraph import dynamicGraph, SPCDynamicGraph, MPCDynamicGraph
-from dyCoDeTa import DynaGraphCommuDetection,AnalyzerDynaCommu
+from dyCoDeTa import DynaGraphCommuDetection,AnalyzerDynaCommu,visualizer
 from visualizer import Visualizer
 from propertiesChecker import PropertiesChecker
 
@@ -187,6 +187,11 @@ def main(test: str = "SPC"):
         analyzer = AnalyzerDynaCommu(detector.dynaCommunity)
         dynaCommulifetime = analyzer.commuLifeTime()
         print("Dynamic community lifetime: ", dynaCommulifetime)
+        flexibilityScores = analyzer.flexibility()
+        print("Flexibility scores: ", flexibilityScores)
+        if viz == True:
+            vizu = visualizer(DynaGa.DynamicGraph, flexibilityScores)
+            vizu.flexibilityVisualization()
         
         return
 
