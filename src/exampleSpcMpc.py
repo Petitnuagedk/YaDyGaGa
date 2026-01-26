@@ -7,12 +7,14 @@ the FrameGenerator, PropertiesChecker, TimelineBlockGenerator, TimelineAssembler
 and TimelineVisualizer classes.
 """
 import networkx as nx
+import numpy as np
 
+import parameter
 from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
 from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
 from dynaGraph import dynamicGraph, SPCDynamicGraph, MPCDynamicGraph
-from dyCoDeTa import DynaGraphCommuDetection,AnalyzerDynaCommu,visualizer
+from dyCoDeTa import DynaGraphCommuDetection, AnalyzerDynaCommu, visualizer
 from visualizer import Visualizer
 from propertiesChecker import PropertiesChecker
 
@@ -36,10 +38,13 @@ def main(test: str = "SPC"):
     print("and in the case of MPC test, pairs constraints are A-F and C-F\n")
     
     
-    test = "Dynamic community detection"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint) "Dynamic community detection" (self explanatory)
+    test = "sweep"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint), "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example)
     viz = False
 
-        # Single path constraint exemple
+    parameters = parameter.timeline_feasible_params(frames=600, stability=0.8)
+    print("Feasible parameters for 600 frames and stability 0.8: ", parameters["feasible_path_life"])
+
+    # Single path constraint exemple
     if test == "SPC":
         print("Single Path Constraint Test")
         S = "A" # source
@@ -194,7 +199,79 @@ def main(test: str = "SPC"):
             vizu.flexibilityVisualization()
         
         return
+    
+    if test == "sweep":
+        pairs = [("A","F"), ("C","F")]
+        sweepResults = sweep_mpc_generate(dynamic_graph_base=G,pairs=pairs, frames=100, path_life=0.5, step=0.1, mode="indep", trials=1000, p_edge=0.5, seed=42)
+        print("Sweep done")
+        print("Results : ", sweepResults)
+        return
 
+
+def sweep_mpc_generate(dynamic_graph_base, pairs, frames: int, path_life: float = None, stability: float = None,
+                       step: float = 0.1, mode: str = "indep", trials: int = 1000, p_edge: float = 0.5, seed: int = 42):
+    """
+    Sweep the unspecified parameter (path_life or stability) using timeline_feasible_params,
+    build one MPC dynamic graph per step, and return a list of results.
+
+    Returns a list of dicts: {'param_name': 'path_life'|'stability', 'param_value': v, 'timeline': timeline, 'dynamic_graph': dynamic_graph}
+    """
+    if (path_life is None) == (stability is None):
+        raise ValueError("Provide exactly one of path_life or stability")
+
+    params_info = parameter.timeline_feasible_params(frames=frames, path_life=path_life, stability=stability)
+    results = []
+
+    # prepare augmented base graph and frame generator once
+    limitedMPC = SourceGraphAugmenter.augmentBaseGraph(dynamic_graph_base, pairs, seed=seed, verbose=False)
+    frame_generator = FrameGenerator()
+
+    nPairs = len(pairs)
+
+    if path_life is not None:
+        # produce stability values in feasible range
+        s_min, s_max = params_info.get('feasible_stability', (0.0, 1.0))
+        vals = np.arange(s_min, s_max + 1e-9, step)
+        param_name = "stability"
+        for v in np.unique(np.round(vals, 6)):
+            stability_v = float(np.clip(v, 0.0, 1.0))
+            # generate MPC frame set (sampling frames for each pair)
+            MPCFrameSet = frame_generator.generateMPCFrames(limitedMPC, pairs, trials=trials, p_edge=p_edge, seed=seed)
+            # generate timeline with current parameters
+            timelineGen = MPCTimelineBlockGenerator(frames, nPairs, path_life, stability_v, mode, seed=seed)
+            timeline = timelineGen.generate()
+            MPCDynaGA = MPCDynamicGraph()
+            MPCDynaGA.buildDynaGraph(timeline, MPCFrameSet)
+            results.append({
+                'param_name': param_name,
+                'param_value': stability_v,
+                'timeline': timeline,
+                'dynamic_graph': MPCDynaGA.DynamicGraph
+            })
+
+    else:
+        # stability provided -> sweep path_life values in feasible range
+        feasible = params_info.get('feasible_path_life')
+        if feasible is None:
+            return results
+        a_min, a_max = feasible
+        vals = np.arange(a_min, a_max + 1e-9, step)
+        param_name = "path_life"
+        for v in np.unique(np.round(vals, 6)):
+            path_life_v = float(np.clip(v, 0.0, 1.0))
+            MPCFrameSet = frame_generator.generateMPCFrames(limitedMPC, pairs, trials=trials, p_edge=p_edge, seed=seed)
+            timelineGen = MPCTimelineBlockGenerator(frames, nPairs, path_life_v, stability, mode, seed=seed)
+            timeline = timelineGen.generate()
+            MPCDynaGA = MPCDynamicGraph()
+            MPCDynaGA.buildDynaGraph(timeline, MPCFrameSet)
+            results.append({
+                'param_name': param_name,
+                'param_value': path_life_v,
+                'timeline': timeline,
+                'dynamic_graph': MPCDynaGA.DynamicGraph
+            })
+
+    return results
 
 if __name__ == "__main__":
     main()
