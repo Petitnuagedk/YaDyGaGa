@@ -204,8 +204,11 @@ def main(test: str = "SPC"):
         pairs = [("A","F"), ("C","F")]
         sweepResults = sweep_mpc_generate(dynamic_graph_base=G,pairs=pairs, frames=100, path_life=0.5, step=0.1, mode="indep", trials=1000, p_edge=0.5, seed=42)
         print("Sweep done")
-        print("Results : ", sweepResults)
+        parameter.save_sweep_results_as_adj_matrices(sweepResults, out_dir="./sweep_results/")
         return
+    
+    print("No test selected. Exiting.")
+    return
 
 
 def sweep_mpc_generate(dynamic_graph_base, pairs, frames: int, path_life: float = None, stability: float = None,

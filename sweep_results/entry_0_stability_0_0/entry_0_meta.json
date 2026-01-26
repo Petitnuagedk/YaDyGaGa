@@ -1,0 +1,8 @@
+{
+  "param_name": "stability",
+  "param_value": 0.0,
+  "frames": 100,
+  "nodes_file": "nodes.txt",
+  "adj_prefix": "adj_frame_",
+  "entry_dir": "entry_0_stability_0_0"
+}

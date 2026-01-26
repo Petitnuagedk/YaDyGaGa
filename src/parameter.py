@@ -1,4 +1,8 @@
 import math
+import os
+import json
+import numpy as np
+import networkx as nx
 
 def timeline_feasible_params(frames: int, path_life: float = None, stability: float = None):
     """
@@ -170,3 +174,105 @@ def sweep_mpc_generate(dynamic_graph_base, pairs, frames: int, path_life: float 
             })
 
     return results
+
+def save_sweep_results_as_adj_matrices(sweep_results, out_dir, overwrite=False):
+    """
+    Persist sweep results to disk as adjacency matrices (CSV) per frame so non-Python
+    tools (C++, etc.) can read them easily.
+
+    Directory layout created under out_dir:
+      index.csv                - summary table (entry_id,param_name,param_value,frames,dir)
+      entry_{i}_{param}.json   - metadata for the entry (nodes order, param)
+      entry_{i}_{param}/
+         nodes.txt             - node labels, one per line (defines matrix row/col order)
+         adj_frame_000.csv     - adjacency matrix for frame 0 (rows = nodes order)
+         adj_frame_001.csv
+         ...
+    Parameters:
+      - sweep_results: list of dicts as returned by sweep_mpc_generate()
+        each dict must contain at least: 'param_name', 'param_value', 'dynamic_graph'
+        where 'dynamic_graph' is a list of networkx.Graph frames (or similar with .nodes()/.edges()).
+      - out_dir: base output directory (will be created if missing)
+      - overwrite: if True, remove existing out_dir contents for same entry names
+    Returns:
+      - path to index CSV file
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    index_rows = []
+    for i, entry in enumerate(sweep_results):
+        param_name = entry.get('param_name', 'param')
+        param_value = entry.get('param_value', entry.get(param_name, 'nan'))
+        dyn_graph = entry.get('dynamic_graph')
+        if dyn_graph is None:
+            # skip malformed entry
+            continue
+
+        # Create a safe directory name
+        entry_dirname = f"entry_{i}_{param_name}_{str(param_value).replace('.', '_')}"
+        entry_dir = os.path.join(out_dir, entry_dirname)
+        if os.path.exists(entry_dir):
+            if overwrite:
+                # remove files inside (do not attempt recursive delete of unrelated content)
+                for fn in os.listdir(entry_dir):
+                    fp = os.path.join(entry_dir, fn)
+                    try:
+                        if os.path.isfile(fp):
+                            os.remove(fp)
+                    except Exception:
+                        pass
+            else:
+                # find a new unique name
+                suffix = 1
+                while os.path.exists(entry_dir):
+                    entry_dir = os.path.join(out_dir, f"{entry_dirname}_{suffix}")
+                    suffix += 1
+        os.makedirs(entry_dir, exist_ok=True)
+
+        # Determine node ordering: union of all nodes across frames, sorted for reproducibility
+        all_nodes = set()
+        for G in dyn_graph:
+            all_nodes.update(list(G.nodes()))
+        nodes = sorted(list(all_nodes), key=lambda x: str(x))
+
+        # Save nodes order
+        nodes_file = os.path.join(entry_dir, "nodes.txt")
+        with open(nodes_file, "w", encoding="utf-8") as f:
+            for n in nodes:
+                f.write(f"{n}\n")
+
+        # Save adjacency matrix per frame as CSV (0/1 integer entries)
+        for t, G in enumerate(dyn_graph):
+            # ensure adjacency uses same node order
+            A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+            frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
+            np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+
+        # Save metadata JSON for the entry
+        meta = {
+            "param_name": param_name,
+            "param_value": param_value,
+            "frames": len(dyn_graph),
+            "nodes_file": "nodes.txt",
+            "adj_prefix": "adj_frame_",
+            "entry_dir": os.path.basename(entry_dir)
+        }
+        meta_file = os.path.join(entry_dir, f"entry_{i}_meta.json")
+        with open(meta_file, "w", encoding="utf-8") as mf:
+            json.dump(meta, mf, indent=2)
+
+        index_rows.append({
+            "entry_id": i,
+            "param_name": param_name,
+            "param_value": param_value,
+            "frames": len(dyn_graph),
+            "entry_dir": os.path.basename(entry_dir)
+        })
+
+    # write index CSV
+    index_file = os.path.join(out_dir, "index.csv")
+    with open(index_file, "w", encoding="utf-8") as idxf:
+        idxf.write("entry_id,param_name,param_value,frames,entry_dir\n")
+        for r in index_rows:
+            idxf.write(f"{r['entry_id']},{r['param_name']},{r['param_value']},{r['frames']},{r['entry_dir']}\n")
+
+    return index_file
