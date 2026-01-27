@@ -18,7 +18,7 @@ from dyCoDeTa import DynaGraphCommuDetection, AnalyzerDynaCommu, visualizer
 from visualizer import Visualizer
 from propertiesChecker import PropertiesChecker
 
-def main(test: str = "SPC"):
+def main(test: str = "SPC", viz: bool = False):
 
     G = nx.Graph()
     G.add_edges_from([
@@ -38,8 +38,8 @@ def main(test: str = "SPC"):
     print("and in the case of MPC test, pairs constraints are A-F and C-F\n")
     
     
-    test = "sweep"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint), "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example)
-    viz = False
+    test = "Dynamic community detection"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint), "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example)
+    viz = True
 
     parameters = parameter.timeline_feasible_params(frames=600, stability=0.8)
     print("Feasible parameters for 600 frames and stability 0.8: ", parameters["feasible_path_life"])
