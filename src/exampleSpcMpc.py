@@ -9,7 +9,7 @@ and TimelineVisualizer classes.
 import networkx as nx
 import numpy as np
 
-import parameter
+import toolbox as toolbox
 from sourceGraphAugmenter import SourceGraphAugmenter
 from frameGenerator import FrameGenerator
 from timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockGenerator
@@ -37,11 +37,13 @@ def main(test: str = "SPC", viz: bool = False):
     print("Where the, in the case of SPC test, the constraint path is bewteen the pair A-F")
     print("and in the case of MPC test, pairs constraints are A-F and C-F\n")
     
-    
-    test = "Dynamic community detection"  # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint), "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example)
+    # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint),
+    # "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example),
+    # "batch" (load previously saved batch data and visualize)
+    test = "batch"
     viz = True
 
-    parameters = parameter.timeline_feasible_params(frames=600, stability=0.8)
+    parameters = toolbox.timelineFeasibleParams(frames=600, stability=0.8)
     print("Feasible parameters for 600 frames and stability 0.8: ", parameters["feasible_path_life"])
 
     # Single path constraint exemple
@@ -74,7 +76,7 @@ def main(test: str = "SPC", viz: bool = False):
 
         DynaGA = SPCDynamicGraph()
         DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
-        DynaGAset = DynaGA.generate_unique_set(timeLine, pathUpFrames, pathDownFrames, target_count=5, seed = 42, max_enumeration=1000)
+        DynaGAset = DynaGA.generateUniqueSet(timeLine, pathUpFrames, pathDownFrames, target_count=5, seed = 42, max_enumeration=1000)
 
 
         path_lifetime = PropertiesChecker.path_lifetime(graphs=DynaGA.DynamicGraph, source=S, destination=D, fps=1)
@@ -136,7 +138,7 @@ def main(test: str = "SPC", viz: bool = False):
 
         MPCDynaGA = MPCDynamicGraph()
         MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
-        MPCDynaGAset = MPCDynaGA.generate_unique_set(timeLine, MPCFrameSet, target_count=5, seed = 42, max_enumeration=1000)
+        MPCDynaGAset = MPCDynaGA.generateUniqueSet(timeLine, MPCFrameSet, target_count=5, seed = 42, max_enumeration=1000)
 
         if viz == True:
             timeline_visualizer = Visualizer(timeLine)
@@ -204,8 +206,38 @@ def main(test: str = "SPC", viz: bool = False):
         pairs = [("A","F"), ("C","F")]
         sweepResults = sweep_mpc_generate(dynamic_graph_base=G,pairs=pairs, frames=100, path_life=0.5, step=0.1, mode="indep", trials=1000, p_edge=0.5, seed=42)
         print("Sweep done")
-        parameter.save_sweep_results_as_adj_matrices(sweepResults, out_dir="./sweep_results/")
+        toolbox.saveSweepMatrices(sweepResults, out_dir="./sweep_results/")
         return
+    
+    if test == "batch":
+        # Batch example: load previously saved data and visualize
+        pairs = [("A","F"), ("C","F")]
+        limitedMPC = SourceGraphAugmenter.augmentBaseGraph(G, pairs,
+                                                        seed = 1,
+                                                        verbose = False)
+        frame_generator = FrameGenerator()
+        MPCFrameSet = frame_generator.generateMPCFrames(limitedMPC,
+                                                        pairs,
+                                                        trials=1000,
+                                                        p_edge=0.5,
+                                                        seed = 1)
+        frames = 50
+        nPairs = len(pairs)
+        pathLifeTime = 0.5
+        stability = 1
+        mode = "indep" # options: "sync" (default) or "indep"
+        timelineGen = MPCTimelineBlockGenerator(frames, nPairs, pathLifeTime, stability, mode, seed = 40)
+        timeLine = timelineGen.generate()
+        MPCDynaGA = MPCDynamicGraph()
+        MPCDynaGAset = MPCDynaGA.generateUniqueSet(timeLine, MPCFrameSet, target_count=5, seed = 42, max_enumeration=1000)
+        #print("MPCDynaGAset first entry dynamic graph length: ", len(MPCDynaGAset[0].DynamicGraph))
+        toolbox.saveDGbatch(MPCDynaGAset, out_dir="./batchExample/")
+
+        path = "./batchExample/"
+        loaded = toolbox.loadFromDirectory(path)
+        viz = Visualizer(timeLine)
+        viz.plotLoadedData(loaded = loaded, n_display=3, interval=800, loop=True)
+        
     
     print("No test selected. Exiting.")
     return
@@ -222,7 +254,7 @@ def sweep_mpc_generate(dynamic_graph_base, pairs, frames: int, path_life: float 
     if (path_life is None) == (stability is None):
         raise ValueError("Provide exactly one of path_life or stability")
 
-    params_info = parameter.timeline_feasible_params(frames=frames, path_life=path_life, stability=stability)
+    params_info = toolbox.timeline_feasible_params(frames=frames, path_life=path_life, stability=stability)
     results = []
 
     # prepare augmented base graph and frame generator once

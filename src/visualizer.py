@@ -365,3 +365,29 @@ class Visualizer:
         plt.tight_layout()
         plt.show()
         return ani
+
+    def plotLoadedData(self, loaded, n_display=None, interval=800, loop=True):
+        """
+        Plot content returned by load_from_directory().
+        - single -> visualize the dynamic graph (animated)
+        - batch  -> pick up to n_display dynamics and animate them side-by-side
+
+        Returns the animation object(s) when possible.
+        """
+        if loaded["type"] == "single":
+            dg = loaded["dynamic_graph"]
+            v = Visualizer([])  # instance used to access method
+            return v.visualize_dynamic_graph(dg, interval=interval, loop=loop)
+        elif loaded["type"] == "batch":
+            entries = loaded["entries"]
+            graphs = [e["dynamic_graph"] for e in entries if e.get("dynamic_graph")]
+            if not graphs:
+                raise RuntimeError("No dynamic graphs found in batch to plot.")
+            # limit how many to show
+            if n_display is None:
+                n_display = min(5, len(graphs))
+            chosen = graphs[:n_display]
+            v = Visualizer([])  # use animate_random_dynamics to render multiple columns
+            return v.animate_random_dynamics(chosen, n=len(chosen), interval=interval, loop=loop, seed=1)
+        else:
+            raise ValueError("Unknown loaded data type")

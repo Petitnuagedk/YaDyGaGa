@@ -81,7 +81,7 @@ class SPCDynamicGraph:
         """
         return tuple(self._frame_fingerprint(g) for g in frames)
 
-    def generate_unique_set(self,
+    def generateUniqueSet(self,
                             timeline: List[bool],
                             path_up: List[nx.Graph],
                             path_down: List[nx.Graph],
@@ -292,7 +292,7 @@ class MPCDynamicGraph:
 
         return self.DynamicGraph
 
-    def generate_unique_set(self,
+    def generateUniqueSet(self,
                             mpc_timeline: List[Tuple[bool, ...]],
                             mpc_frame_set: dict,
                             target_count: int,

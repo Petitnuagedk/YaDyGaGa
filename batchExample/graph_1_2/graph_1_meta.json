@@ -1,0 +1,7 @@
+{
+  "entry_name": "graph_1",
+  "frames": 50,
+  "nodes_file": "nodes.txt",
+  "adj_prefix": "adj_frame_",
+  "entry_dir": "graph_1_2"
+}
