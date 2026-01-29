@@ -40,7 +40,7 @@ def main(test: str = "SPC", viz: bool = False):
     # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint),
     # "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example),
     # "batch" (load previously saved batch data and visualize)
-    test = "SPC"
+    test = "MPC"
     viz = True
     verbose = False
 
@@ -113,9 +113,8 @@ def main(test: str = "SPC", viz: bool = False):
 
     # -----------------------------
     # Multi path constraint exemple
-
     if test == "MPC":
-        pairs = [("A","F"), ("C","F")]
+        pairs = [("A","D"), ("C","F")]
         limitedMPC = SourceGraphAugmenter.augmentBaseGraph(G, pairs,
                                                         seed = 1,
                                                         verbose = False)
@@ -131,13 +130,12 @@ def main(test: str = "SPC", viz: bool = False):
         frames = 50
         nPairs = len(pairs)
         pathLifeTime = 0.5
-        stability = 1
+        stability = 0.8
         mode = "indep" # options: "sync" (default) or "indep"
         timelineGen = MPCTimelineBlockGenerator(frames, nPairs, pathLifeTime, stability, mode, seed = 40)
         # timeline_block_generator = SPCTimelineBlockGenerator(frames, path_life, stability, mode)
         timeLine = timelineGen.generate()
         # print("Time line : ", timeLine, "\n")
-        # print(timelineGen.computeStatistics(timeLine), "\n")
 
         MPCDynaGA = MPCDynamicGraph()
         MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
@@ -145,8 +143,8 @@ def main(test: str = "SPC", viz: bool = False):
 
         if viz == True:
             timeline_visualizer = Visualizer(timeLine)
-            timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph)
-            timeline_visualizer.animate_random_dynamics(MPCDynaGAset, n=2, interval=1000)
+            timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph, target_pairs=pairs)
+            timeline_visualizer.animate_random_dynamics(MPCDynaGAset, n=2, interval=1000, target_pairs=pairs)
         return
 
     if test == "Dynamic community detection":

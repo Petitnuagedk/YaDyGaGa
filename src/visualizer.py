@@ -7,6 +7,8 @@ from matplotlib.animation import FuncAnimation
 import networkx as nx
 import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
+import numpy as np
+from matplotlib.collections import LineCollection
 
 class Visualizer:
     def __init__(self, timeline):
@@ -43,6 +45,12 @@ class Visualizer:
         If `target_pairs` is provided (list of (src,dst) tuples), highlight the
         current shortest path for each pair in a distinct color and show a legend
         on the right listing all targeted pairs.
+
+        Improvements:
+        - node labels are drawn to the right of the node (not inside)
+        - when multiple target paths traverse the same link, the link is shown
+          as a sequence of colored sub-segments (one segment per path) so each
+          path color is visible as a fraction of the link.
         """
         if not graphs:
             raise ValueError("graphs list is empty")
@@ -155,7 +163,6 @@ class Visualizer:
         if legend_handles:
             fig_legend = fig.legend(handles=legend_handles, title="Target pairs",
                                     loc='center right', bbox_to_anchor=(0.98, 0.5))
-            # leave room for the legend on the right
             plt.subplots_adjust(right=0.78)
 
         # animation: update top subplot per-frame and move the red bar
@@ -179,7 +186,7 @@ class Visualizer:
                     nodes_coll.set_zorder(1)
                 except Exception:
                     pass
-            # draw base edges faintly
+            # draw base edges faintly (only edges present in the current frame)
             if G.number_of_edges() > 0:
                 edges_coll = nx.draw_networkx_edges(G, pos, edgelist=G.edges(), edge_color=edge_color, alpha=0.6, ax=ax_top)
                 try:
@@ -187,33 +194,48 @@ class Visualizer:
                 except Exception:
                     pass
 
-            # For each target pair, compute and draw shortest path if exists
+            # For each target pair, compute shortest path if exists and collect path edges per-edge
+            edge_to_path_colors = {}  # key: (u,v) sorted, val: list of colors in order encountered
             if target_pairs:
                 for p, col in pair_colors.items():
                     s, t = p
                     if s in G and t in G:
                         try:
                             path_nodes = nx.shortest_path(G, source=s, target=t)
-                            # edges along path
                             path_edges = list(zip(path_nodes[:-1], path_nodes[1:]))
-                            # draw path edges and nodes on top
-                            path_edges_coll = nx.draw_networkx_edges(G, pos, edgelist=path_edges, edge_color=[col], width=3.0, ax=ax_top)
-                            try:
-                                path_edges_coll.set_zorder(3)
-                            except Exception:
-                                pass
-                            path_nodes_coll = nx.draw_networkx_nodes(G, pos, nodelist=path_nodes, node_color=[col]*len(path_nodes),
-                                                                     node_size=int(node_size*1.1), ax=ax_top, edgecolors='k')
-                            try:
-                                path_nodes_coll.set_zorder(4)
-                            except Exception:
-                                pass
+                            for e in path_edges:
+                                key = tuple(sorted(e))
+                                edge_to_path_colors.setdefault(key, []).append(col)
                         except (nx.NetworkXNoPath, nx.NodeNotFound):
-                            # no path in this frame; skip
                             pass
 
+                # Draw per-edge segmented colored representation where paths share links.
+                seg_collections = []
+                for (u, v), cols in edge_to_path_colors.items():
+                    p0 = np.array(pos[u])
+                    p1 = np.array(pos[v])
+                    m = len(cols)
+                    # create m consecutive sub-segments along the edge
+                    segs = []
+                    seg_colors = []
+                    for i, c in enumerate(cols):
+                        a = i / m
+                        b = (i + 1) / m
+                        seg_start = tuple(p0 * (1 - a) + p1 * a)
+                        seg_end = tuple(p0 * (1 - b) + p1 * b)
+                        segs.append((seg_start, seg_end))
+                        seg_colors.append(c)
+                    lc = LineCollection(segs, colors=seg_colors, linewidths=3.0, zorder=3)
+                    ax_top.add_collection(lc)
+
+            # draw full labels to the right of nodes (not inside)
             if with_labels and node_list:
-                nx.draw_networkx_labels(union, pos, ax=ax_top)
+                # draw labels with horizontal alignment left so they appear next to nodes
+                labels = {n: str(n) for n in node_list}
+                nx.draw_networkx_labels(union, pos, labels=labels, font_size=9,
+                                        horizontalalignment='left', verticalalignment='center', ax=ax_top)
+
+            # legend is drawn at figure level (fig_legend) so do not create per-frame axes legend
 
             # move bar on bottom timeline
             x = frame_index - 0.5  # align bar to frame column
