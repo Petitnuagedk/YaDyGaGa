@@ -5,6 +5,8 @@ import random
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import networkx as nx
+import matplotlib.patches as mpatches
+from matplotlib.lines import Line2D
 
 class Visualizer:
     def __init__(self, timeline):
@@ -34,11 +36,13 @@ class Visualizer:
 
     def visualize_dynamic_graph(self, graphs, interval=1000, loop=True, node_pos=None,
                                 node_size=300, node_color='skyblue', edge_color='gray',
-                                absent_node_color='lightgray', with_labels=True):
+                                absent_node_color='lightgray', with_labels=True,
+                                target_pairs=None):
         """
-        Animated top subplot (circular layout) per-frame; bottom arc timeline is static.
-        Bottom shows arcs for every edge occurrence and dots only for nodes that are connected
-        in that frame. A soft red vertical bar indicates the current frame (animated).
+        Animated network with a bottom contact timeline.
+        If `target_pairs` is provided (list of (src,dst) tuples), highlight the
+        current shortest path for each pair in a distinct color and show a legend
+        on the right listing all targeted pairs.
         """
         if not graphs:
             raise ValueError("graphs list is empty")
@@ -52,14 +56,21 @@ class Visualizer:
         node_list = list(union.nodes())
         n_nodes = len(node_list)
 
-        # Compute positions once unless provided
+        # Compute positions once unless provided (use circular layout)
         if node_pos is None:
             pos = nx.circular_layout(union) if len(union) > 0 else {}
         else:
             pos = node_pos
 
+        # prepare pair colors
+        pair_colors = {}
+        if target_pairs:
+            cmap = plt.cm.get_cmap('tab10')
+            for i, p in enumerate(target_pairs):
+                pair_colors[p] = cmap(i % cmap.N)
+
         # figure with two stacked subplots
-        fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(6, 8),
+        fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(8, 8),
                                                 gridspec_kw={'height_ratios': [2, 1]})
         ax_top.set_title("Network (animated)")
         ax_top.axis('off')
@@ -77,7 +88,6 @@ class Visualizer:
         ax_bottom.set_xlim(-0.5, max(0, len(graphs) - 0.5))
         ax_bottom.grid(True, axis='x', linestyle=':', alpha=0.4)
 
-        # helper mapping
         node_to_index = {n: i for i, n in enumerate(node_list)}
 
         # draw all arcs (one per edge occurrence) and prepare scatter points for nodes that are connected
@@ -88,18 +98,14 @@ class Visualizer:
         scatter_y = []
 
         for f_idx, G in enumerate(graphs):
-            # nodes that are connected in this frame: any node appearing in an edge
             connected_nodes = set()
             for u, v in G.edges():
                 connected_nodes.add(u)
                 connected_nodes.add(v)
-
-                # skip if nodes unknown
                 if u not in node_to_index or v not in node_to_index:
                     continue
                 y1 = node_to_index[u]
                 y2 = node_to_index[v]
-
                 if y1 == y2:
                     mid_y = y1
                     rad_x = 0.4
@@ -123,13 +129,11 @@ class Visualizer:
                                   lw=1.2, alpha=0.9, zorder=1)
                 ax_bottom.add_patch(patch)
 
-            # add scatter points only for connected nodes in this frame
             for n in connected_nodes:
                 if n in node_to_index:
                     scatter_x.append(f_idx)
                     scatter_y.append(node_to_index[n])
 
-        # plot all connection dots once (only when node is in an edge that frame)
         if scatter_x:
             ax_bottom.scatter(scatter_x, scatter_y, c=node_color, s=30, zorder=3)
 
@@ -139,13 +143,28 @@ class Visualizer:
                         color='red', alpha=0.12, zorder=4)
         ax_bottom.add_patch(bar)
 
+        # prepare legend handles for target pairs (on the right)
+        legend_handles = []
+        if target_pairs:
+            for p, col in pair_colors.items():
+                lbl = f"{p[0]} -> {p[1]}"
+                legend_handles.append(Line2D([0], [0], color=col, lw=3, label=lbl))
+
+        # place a figure-level legend so it is not removed by per-frame axis.clear()
+        fig_legend = None
+        if legend_handles:
+            fig_legend = fig.legend(handles=legend_handles, title="Target pairs",
+                                    loc='center right', bbox_to_anchor=(0.98, 0.5))
+            # leave room for the legend on the right
+            plt.subplots_adjust(right=0.78)
+
         # animation: update top subplot per-frame and move the red bar
         def update(frame_index):
-            # animate top: show nodes/edges for this frame using stable positions
-            G = graphs[frame_index]
             ax_top.clear()
             ax_top.axis('off')
             ax_top.set_title(f"Frame {frame_index + 1}/{len(graphs)}")
+
+            G = graphs[frame_index]
 
             # Node colors: highlight nodes present in this frame, fade absent ones
             top_node_colors = [
@@ -154,11 +173,45 @@ class Visualizer:
             ]
 
             if node_list:
-                nx.draw_networkx_nodes(union, pos, nodelist=node_list,
-                                       node_color=top_node_colors, node_size=node_size, ax=ax_top)
-            # draw only edges present in the current frame
+                nodes_coll = nx.draw_networkx_nodes(union, pos, nodelist=node_list,
+                                                    node_color=top_node_colors, node_size=node_size, ax=ax_top)
+                try:
+                    nodes_coll.set_zorder(1)
+                except Exception:
+                    pass
+            # draw base edges faintly
             if G.number_of_edges() > 0:
-                nx.draw_networkx_edges(G, pos, edge_color=edge_color, ax=ax_top)
+                edges_coll = nx.draw_networkx_edges(G, pos, edgelist=G.edges(), edge_color=edge_color, alpha=0.6, ax=ax_top)
+                try:
+                    edges_coll.set_zorder(1)
+                except Exception:
+                    pass
+
+            # For each target pair, compute and draw shortest path if exists
+            if target_pairs:
+                for p, col in pair_colors.items():
+                    s, t = p
+                    if s in G and t in G:
+                        try:
+                            path_nodes = nx.shortest_path(G, source=s, target=t)
+                            # edges along path
+                            path_edges = list(zip(path_nodes[:-1], path_nodes[1:]))
+                            # draw path edges and nodes on top
+                            path_edges_coll = nx.draw_networkx_edges(G, pos, edgelist=path_edges, edge_color=[col], width=3.0, ax=ax_top)
+                            try:
+                                path_edges_coll.set_zorder(3)
+                            except Exception:
+                                pass
+                            path_nodes_coll = nx.draw_networkx_nodes(G, pos, nodelist=path_nodes, node_color=[col]*len(path_nodes),
+                                                                     node_size=int(node_size*1.1), ax=ax_top, edgecolors='k')
+                            try:
+                                path_nodes_coll.set_zorder(4)
+                            except Exception:
+                                pass
+                        except (nx.NetworkXNoPath, nx.NodeNotFound):
+                            # no path in this frame; skip
+                            pass
+
             if with_labels and node_list:
                 nx.draw_networkx_labels(union, pos, ax=ax_top)
 
@@ -166,7 +219,6 @@ class Visualizer:
             x = frame_index - 0.5  # align bar to frame column
             bar.set_x(x)
 
-            # no blitting; return nothing
             return []
 
         ani = FuncAnimation(fig, update, frames=range(len(graphs)),
@@ -187,15 +239,13 @@ class Visualizer:
                                 node_color='skyblue',
                                 absent_node_color='lightgray',
                                 edge_color='gray',
-                                with_labels=True):
+                                with_labels=True,
+                                target_pairs=None):
         """
-        Pick up to `n` dynamics from `dynamics` (randomly, deterministically with seed)
-        and animate them side-by-side. Each column shows:
-          - top: animated circular layout for that dynamic (per-frame)
-          - bottom: static arc timeline (all arcs/dots drawn once) with a soft red
-                    vertical bar that moves to indicate the current frame.
-
-        Shorter dynamics are looped (frame index modulo length).
+        Pick up to `n` dynamics from `dynamics` and animate them side-by-side.
+        If `target_pairs` is provided, highlight shortest paths for any pair that
+        appears in the union node set of that column; pair colors are consistent.
+        Also display a legend (right) listing the targeted pairs.
         """
         if seed is not None:
             random.seed(seed)
@@ -219,7 +269,13 @@ class Visualizer:
         count = min(n, len(pool))
         chosen_indices = random.sample(range(len(pool)), count)
 
-        # Precompute per-dynamic union graph, positions and node lists to keep layout stable
+        # pair colors global (so same across columns)
+        pair_colors = {}
+        if target_pairs:
+            cmap = plt.cm.get_cmap('tab10')
+            for i, p in enumerate(target_pairs):
+                pair_colors[p] = cmap(i % cmap.N)
+
         from matplotlib.path import Path
         from matplotlib.patches import PathPatch, Rectangle
 
@@ -233,7 +289,6 @@ class Visualizer:
             pos = nx.circular_layout(union) if len(union) > 0 else {}
             node_list = list(union.nodes())
             node_to_index = {n: i for i, n in enumerate(node_list)}
-            # prepare static timeline patches and scatter points for this dynamic
             patches = []
             scatter_x = []
             scatter_y = []
@@ -267,7 +322,6 @@ class Visualizer:
                     path = Path(verts, codes)
                     patches.append(PathPatch(path, edgecolor=edge_color, facecolor='none',
                                              lw=1.2, alpha=0.9, zorder=1))
-                # scatter only nodes that are connected in this frame
                 for n in connected_nodes:
                     if n in node_to_index:
                         scatter_x.append(f_idx)
@@ -284,7 +338,7 @@ class Visualizer:
                 "scatter_x": scatter_x,
                 "scatter_y": scatter_y,
                 "n_nodes": len(node_list),
-                "bar": None,  # will be set after axes creation
+                "bar": None,
             })
 
         max_frames = max(info["length"] for info in dyn_info)
@@ -292,7 +346,6 @@ class Visualizer:
         # create 2 x count axes: top row animated networks, bottom row static timelines
         fig, axes = plt.subplots(2, count, figsize=figsize,
                                  gridspec_kw={'height_ratios': [2, 1]})
-        # normalize axes into two lists (top_axes, bottom_axes)
         if count == 1:
             top_axes = [axes[0]]
             bottom_axes = [axes[1]]
@@ -300,10 +353,15 @@ class Visualizer:
             top_axes = axes[0]
             bottom_axes = axes[1]
 
-        # draw static content for each column (bottom timeline) and configure axes
+        # prepare legend handles (global)
+        legend_handles = []
+        if target_pairs:
+            for p, col in pair_colors.items():
+                lbl = f"{p[0]} -> {p[1]}"
+                legend_handles.append(Line2D([0], [0], color=col, lw=3, label=lbl))
+
         for ax_top, ax_bottom, info in zip(top_axes, bottom_axes, dyn_info):
             ax_top.axis('off')
-            # bottom axis setup
             n_nodes = info["n_nodes"]
             node_list = info["node_list"]
             ax_bottom.set_title("Connections over time")
@@ -318,17 +376,18 @@ class Visualizer:
             ax_bottom.set_xlim(-0.5, max(0, info["length"] - 0.5))
             ax_bottom.grid(True, axis='x', linestyle=':', alpha=0.4)
 
-            # add all prepared patches
             for p in info["patches"]:
                 ax_bottom.add_patch(p)
-            # add scatter of connected nodes (one dot per occurrence)
             if info["scatter_x"]:
                 ax_bottom.scatter(info["scatter_x"], info["scatter_y"], c=node_color, s=30, zorder=3)
-            # add animated bar (one per dynamic)
             bar = Rectangle((-0.5, -0.5), width=1.0, height=max(0, n_nodes),
                             color='red', alpha=0.12, zorder=4)
             ax_bottom.add_patch(bar)
             info["bar"] = bar
+
+            # add legend on top axis if target pairs provided
+            if legend_handles:
+                ax_top.legend(handles=legend_handles, title="Target pairs", bbox_to_anchor=(1.02, 1), loc='upper left')
 
         # animation: update top row per-frame and move each bottom bar
         def update(frame_index):
@@ -345,19 +404,47 @@ class Visualizer:
                 node_colors = [node_color if (n in G.nodes()) else absent_node_color for n in node_list]
 
                 if node_list:
-                    nx.draw_networkx_nodes(info["union"], pos, nodelist=node_list,
-                                           node_color=node_colors, node_size=node_size, ax=ax_top)
+                    nodes_coll = nx.draw_networkx_nodes(info["union"], pos, nodelist=node_list,
+                                                        node_color=node_colors, node_size=node_size, ax=ax_top)
+                    try:
+                        nodes_coll.set_zorder(1)
+                    except Exception:
+                        pass
                 # draw only edges present in the current frame
                 if G.number_of_edges() > 0:
-                    nx.draw_networkx_edges(G, pos, edge_color=edge_color, ax=ax_top)
+                    edges_coll = nx.draw_networkx_edges(G, pos, edgelist=G.edges(), edge_color=edge_color, ax=ax_top)
+                    try:
+                        edges_coll.set_zorder(1)
+                    except Exception:
+                        pass
                 if with_labels and node_list:
                     nx.draw_networkx_labels(info["union"], pos, ax=ax_top)
 
-                # move corresponding bar on bottom timeline
+                # highlight target pair paths if present in this union/graph
+                if target_pairs:
+                    for p, col in pair_colors.items():
+                        s, t = p
+                        if s in G and t in G:
+                            try:
+                                path_nodes = nx.shortest_path(G, source=s, target=t)
+                                path_edges = list(zip(path_nodes[:-1], path_nodes[1:]))
+                                path_edges_coll = nx.draw_networkx_edges(G, pos, edgelist=path_edges, edge_color=[col], width=3.0, ax=ax_top)
+                                try:
+                                    path_edges_coll.set_zorder(3)
+                                except Exception:
+                                    pass
+                                path_nodes_coll = nx.draw_networkx_nodes(G, pos, nodelist=path_nodes, node_color=[col]*len(path_nodes),
+                                                                         node_size=int(node_size*1.1), ax=ax_top, edgecolors='k')
+                                try:
+                                    path_nodes_coll.set_zorder(4)
+                                except Exception:
+                                    pass
+                            except (nx.NetworkXNoPath, nx.NodeNotFound):
+                                pass
+
                 x = fi - 0.5
                 info["bar"].set_x(x)
 
-            # no blitting; return nothing
             return []
 
         ani = FuncAnimation(fig, update, frames=range(max_frames),

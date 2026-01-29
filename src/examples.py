@@ -40,8 +40,9 @@ def main(test: str = "SPC", viz: bool = False):
     # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint),
     # "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example),
     # "batch" (load previously saved batch data and visualize)
-    test = "batch"
+    test = "SPC"
     viz = True
+    verbose = False
 
     parameters = toolbox.timelineFeasibleParams(frames=600, stability=0.8)
     print("Feasible parameters for 600 frames and stability 0.8: ", parameters["feasible_path_life"])
@@ -51,7 +52,8 @@ def main(test: str = "SPC", viz: bool = False):
         print("Single Path Constraint Test")
         S = "A" # source
         D = "F" # destination
-        limitedSPC = SourceGraphAugmenter.augmentBaseGraph(G, [(S, D)],
+        pair = [(S, D)]
+        limitedSPC = SourceGraphAugmenter.augmentBaseGraph(G, pair,
                                                         seed = 1,
                                                         verbose = False)
         print("Original Graph edges: ", G.edges())
@@ -80,31 +82,32 @@ def main(test: str = "SPC", viz: bool = False):
 
 
         path_lifetime = PropertiesChecker.path_lifetime(graphs=DynaGA.DynamicGraph, source=S, destination=D, fps=1)
-        print("Path lifetime properties: ", path_lifetime)
-
         path_stability = PropertiesChecker.path_stability(graphs=DynaGA.DynamicGraph, source=S, destination=D)
-        print("Path stability properties: ", path_stability)
-
         path_length = PropertiesChecker.path_length(graphs=DynaGA.DynamicGraph, source=S, destination=D)
-        print("Path length properties: ", path_length)
 
-        print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
 
-        detector = DynaGraphCommuDetection(DynaGA.DynamicGraph, method="louvain", seed = 444)
-        communities = detector.detectStatCommunities()
-        print("Detected communities fro frame 1: ", communities[0])
-        comm_mapper = detector.unitCirclePlacement()
-        print("Community based node placement for frame 1: ", comm_mapper)
-        #detector.plotCommuMapper()
-        detector.HspacePlacement(frame_index=0)
-        print("Community positions in H space for frame 1: ", detector.HspaceMapper[0])
-        detector.plotHspacePlacement(frame_index=0)
+        # detector = DynaGraphCommuDetection(DynaGA.DynamicGraph, method="louvain", seed = 444)
+        # communities = detector.detectStatCommunities()
+        # comm_mapper = detector.unitCirclePlacement()
 
+
+        if verbose:
+            print("Path lifetime properties: ", path_lifetime)
+            print("Path stability properties: ", path_stability)
+            print("Path length properties: ", path_length)
+            print("Dynamic Graph length: ", len(DynaGA.DynamicGraph))
+            print("Detected communities fro frame 1: ", communities[0])
+            print("Community based node placement for frame 1: ", comm_mapper)
+            print("Community positions in H space for frame 1: ", detector.HspaceMapper[0])
 
         if viz == True:
             timeline_visualizer = Visualizer(timeLine)
-            timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph)
-            timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, interval=1000)
+            timeline_visualizer.visualize_dynamic_graph(DynaGA.DynamicGraph, target_pairs=pair)
+            timeline_visualizer.animate_random_dynamics(DynaGAset, n=2, interval=1000, target_pairs=pair)
+
+            # detector.plotCommuMapper()
+            # detector.HspacePlacement(frame_index=0)
+            # detector.plotHspacePlacement(frame_index=0)
 
         return
 
