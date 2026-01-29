@@ -172,7 +172,6 @@ def main(test: str = "SPC", viz: bool = False):
         MPCDynaGA = MPCDynamicGraph()
         MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
         MPCDynaGAset = MPCDynaGA.generateUniqueSet(timeLine, MPCFrameSet, target_count=2, seed = 42, max_enumeration=10000)
-        print("MPC Dynamic Graph length: ", len(MPCDynaGAset))
         if viz == True:
             timeline_visualizer = Visualizer(timeLine)
             timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph, target_pairs=pairs)
