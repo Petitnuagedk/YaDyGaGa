@@ -8,30 +8,34 @@ class SPCTimelineBlockGenerator:
     timeline blocks.
     """
 
-    def __init__(self, frames: int, path_life: float, stability: float, seed : float ,mode: str = "blocks"):
+    def __init__(self, frames: int, path_life: float, stability: float, seed : float ,mode: str = "blocks", pathPersistency: float = 0.0):
         self.frames = frames
         self.path_life = path_life
         self.stability = stability
         self.mode = mode
         self.seed = seed
+        self.pathPersistency = float(pathPersistency) if pathPersistency is not None else 0.0
 
-    def generate_blocks(self) -> List[bool]:
+    def generate_blocks(self) -> dict:
         """
-        Generate a sequence of booleans representing timeline blocks.
-        True indicates "path up" and False indicates "path down".
+        Generate a sequence of booleans representing timeline blocks (legacy behavior)
+        plus a parallel `path_ids` list labeling up-frames with an integer id.
 
-        Stability in [0,1] controls the number of up-blocks:
-          - stability == 1 -> exactly 1 contiguous up block (if up frames > 0)
-          - stability == 0 -> up frames split into as many blocks as possible (each up frame isolated)
-          - intermediate -> interpolated number of up blocks between 1 and up_count
+        Returns dict:
+           { 'timeline': List[bool], 'path_ids': List[Optional[int]] }
 
-        When there is a single up block, it may be placed at an edge (one down block)
-        or in the middle (two down blocks).
+        path_ids: None for down frames, integer id for up frames. Ids indicate which
+        up-frames should share the same path identity. Id assignment is deterministic
+        given `seed` and reflects `pathPersistency`:
+          - 1.0 -> all frames inside an up run share same id
+          - 0.0 -> each successive up frame gets a new id
+          - intermediate -> probability of keeping same id between successive up frames = pathPersistency
         """
         random.seed(self.seed)
         if self.frames <= 0:
-            return []
+            return {"timeline": [], "path_ids": []}
 
+        # reuse existing logic to compute boolean timeline
         up_count = int(round(self.frames * self.path_life))
         up_count = max(0, min(self.frames, up_count))
         down_count = self.frames - up_count
@@ -39,13 +43,57 @@ class SPCTimelineBlockGenerator:
         if self.mode == "random":
             timeline = [True] * up_count + [False] * down_count
             random.shuffle(timeline)
-            return timeline
+            # assign path_ids based on persistence rule applied on successive True frames
+            path_ids = [None] * len(timeline)
+            next_pid = 0
+            last_pid = None
+            for i, st in enumerate(timeline):
+                if st:
+                    if last_pid is None:
+                        pid = next_pid
+                        next_pid += 1
+                    else:
+                        if random.random() < self.pathPersistency:
+                            pid = last_pid
+                        else:
+                            pid = next_pid
+                            next_pid += 1
+                    path_ids[i] = pid
+                    last_pid = pid
+                else:
+                    last_pid = None
+            self.last_timeline = timeline
+            self.last_path_ids = path_ids
+            return {"timeline": timeline, "path_ids": path_ids}
 
         # trivial cases
         if up_count == 0:
-            return [False] * self.frames
+            timeline = [False] * self.frames
+            path_ids = [None] * self.frames
+            self.last_timeline = timeline
+            self.last_path_ids = path_ids
+            return {"timeline": timeline, "path_ids": path_ids}
         if down_count == 0:
-            return [True] * self.frames
+            timeline = [True] * self.frames
+            # If all frames up, decide id assignment according to pathPersistency
+            path_ids = [None] * self.frames
+            next_pid = 0
+            last_pid = None
+            for i in range(self.frames):
+                if last_pid is None:
+                    pid = next_pid
+                    next_pid += 1
+                else:
+                    if random.random() < self.pathPersistency:
+                        pid = last_pid
+                    else:
+                        pid = next_pid
+                        next_pid += 1
+                path_ids[i] = pid
+                last_pid = pid
+            self.last_timeline = timeline
+            self.last_path_ids = path_ids
+            return {"timeline": timeline, "path_ids": path_ids}
 
         # determine number of up blocks based on stability
         # min_up_blocks = 1, max_up_blocks = up_count (each up frame isolated)
@@ -177,38 +225,30 @@ class SPCTimelineBlockGenerator:
             else:
                 timeline = [False] * self.frames
 
-        return timeline
-
-    def _allocate_block_size(self, state: bool, remaining_up: int, remaining_down: int, remaining_blocks: int) -> int:
-        """
-        Allocate block size based on the current state and remaining counts.
-        """
-        if state:
-            max_alloc = remaining_up - max(0, remaining_blocks - 1) * 0
-            target = max(1, int(round(remaining_up / remaining_blocks)))
-            return min(max(1, target), remaining_up) if remaining_up > 0 else 0
-        else:
-            max_alloc = remaining_down - max(0, remaining_blocks - 1) * 0
-            target = max(1, int(round(remaining_down / remaining_blocks)))
-            return min(max(1, target), remaining_down) if remaining_down > 0 else 0
-
-    def _build_timeline_from_blocks(self, blocks: List[Tuple[bool, int]]) -> List[bool]:
-        """
-        Build the timeline from the generated blocks.
-        """
-        timeline = []
-        for st, size in blocks:
-            timeline.extend([bool(st)] * size)
-
-        # Final adjustment to ensure the timeline matches the specified frame count
-        if len(timeline) > self.frames:
-            return timeline[:self.frames]
-        elif len(timeline) < self.frames:
-            if timeline:
-                timeline.extend([timeline[-1]] * (self.frames - len(timeline)))
+        # After timeline computed: assign path_ids according to pathPersistency
+        path_ids = [None] * len(timeline)
+        next_pid = 0
+        last_pid = None
+        for i, st in enumerate(timeline):
+            if st:
+                if last_pid is None:
+                    pid = next_pid
+                    next_pid += 1
+                else:
+                    #print(random.random(), self.pathPersistency)
+                    if random.random() < self.pathPersistency:
+                        pid = last_pid
+                    else:
+                        pid = next_pid
+                        next_pid += 1
+                path_ids[i] = pid
+                last_pid = pid
             else:
-                timeline = [False] * self.frames
-        return timeline
+                last_pid = None
+            #print(i, st, path_ids[i], last_pid)
+        self.last_timeline = timeline
+        self.last_path_ids = path_ids
+        return {"timeline": timeline, "path_ids": path_ids}
     
 
 class MPCTimelineBlockGenerator:

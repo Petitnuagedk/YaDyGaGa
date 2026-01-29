@@ -283,7 +283,40 @@ class Visualizer:
                 continue
             if not frames:
                 frames = [nx.Graph()]
-            pool.append(frames)
+            # Normalize each frame element to a single networkx.Graph.
+            # Many producers (SPC with pathPersistency) may return grouped entries
+            # where a frame slot can be a list of candidate graphs. For visualization
+            # pick a representative graph deterministically using the provided seed.
+            rnd_pick = random.Random(seed)
+            normalized = []
+            for fe in frames:
+                if isinstance(fe, (list, tuple)):
+                    # pick a representative graph from the group (deterministic choice)
+                    chosen = None
+                    for el in fe:
+                        if isinstance(el, nx.Graph):
+                            chosen = el
+                            break
+                    if chosen is None:
+                        # fallback to random pick if group contains non-graph entries
+                        try:
+                            chosen = rnd_pick.choice(list(fe))
+                        except Exception:
+                            chosen = nx.Graph()
+                    normalized.append(chosen)
+                elif isinstance(fe, nx.Graph):
+                    normalized.append(fe)
+                else:
+                    # unknown element, try to use first attribute .nodes if present
+                    try:
+                        if hasattr(fe, "nodes"):
+                            normalized.append(fe)
+                        else:
+                            normalized.append(nx.Graph())
+                    except Exception:
+                        normalized.append(nx.Graph())
+
+            pool.append(normalized)
 
         if not pool:
             raise ValueError("No valid dynamics provided")

@@ -40,7 +40,7 @@ def main(test: str = "SPC", viz: bool = False):
     # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint),
     # "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example),
     # "batch" (load previously saved batch data and visualize)
-    test = "MPC"
+    test = "SPC"
     viz = True
     verbose = False
 
@@ -49,6 +49,14 @@ def main(test: str = "SPC", viz: bool = False):
 
     # Single path constraint exemple
     if test == "SPC":
+
+        frames = 50 # need to change name to make it more clear, this is number of timeline frames
+        InversepathLength = 1 # TODO : enforce geometric path length constraint in timeline generation
+        path_life = 0.5
+        stability = 0.8
+        pathPersistency = 1 # TODO : enforce that a given path remains the same when alive
+        mode = "blocks"
+    
         print("Single Path Constraint Test")
         S = "A" # source
         D = "F" # destination
@@ -60,22 +68,22 @@ def main(test: str = "SPC", viz: bool = False):
         print("Limited Graph edges: ", limitedSPC.edges())
 
         frame_generator = FrameGenerator()
-        frame_generator.generateSPCFrames(limitedSPC, S, D, trials=1000, p_edge=0.5)
+        frame_generator.generateSPCFrames(limitedSPC, S, D, trials=3000, p_edge=0.5, pathPersistency = pathPersistency)
 
         pathUpFrames = frame_generator.path_up_frames
         pathDownFrames = frame_generator.path_down_frames
 
-        frames = 50 # need to change name to make it more clear, this is number of timeline frames
-        InversepathLength = 1 # TODO : enforce geometric path length constraint in timeline generation
-        path_life = 0.5
-        stability = 0.8
-        mode = "blocks"
-
-        timeline_block_generator = SPCTimelineBlockGenerator(frames, path_life, stability, mode)
+        if verbose:
+            print("Number of path up frames groups: ", len(pathUpFrames))
+            for i, group in enumerate(pathUpFrames):
+                print(f" Path {i} (nodes {frame_generator.path_up_keys[i]}): {len(group)} frames")
+            print("Number of path down frames: ", len(pathDownFrames))
+        
+        timeline_block_generator = SPCTimelineBlockGenerator(frames, path_life, stability, mode, pathPersistency = pathPersistency)
         timeLine = timeline_block_generator.generate_blocks()
 
         print("Time line : ", timeLine)
-
+        
         DynaGA = SPCDynamicGraph()
         DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
         DynaGAset = DynaGA.generateUniqueSet(timeLine, pathUpFrames, pathDownFrames, target_count=5, seed = 42, max_enumeration=1000)

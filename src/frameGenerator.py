@@ -17,18 +17,44 @@ class FrameGenerator:
         self.path_up_frames = []
         self.path_down_frames = []
 
-    def generateSPCFrames(self, limited_G: nx.Graph, s: str, d: str, trials: int = 1000, p_edge: float = 0.5) -> None:
+    def generateSPCFrames(self, limited_G: nx.Graph, s: str, d: str, trials: int = 1000, p_edge: float = 0.5, pathPersistency: float = 0.0) -> None:
+        """
+        Generate `trials` random frames from `limited_G`. For SPC:
+        - group frames where a path exists (s->d) by the actual node-sequence of that path.
+          self.path_up_frames becomes a list of lists: each sublist contains frames that
+          share the same s->d node-sequence (the path), but may differ elsewhere.
+        - self.path_down_frames remains a flat list of frames without s->d path.
+        - pathPersistency is accepted here for API compatibility (used in timeline builder).
+        """
+        assert 0.0 <= pathPersistency <= 1.0
         edges = list(limited_G.edges())
+        # temporary map: path_tuple -> list of frames
+        path_map = {}
+        down_list = []
+
         for _ in range(trials):
             H = nx.Graph()
             H.add_nodes_from(limited_G.nodes())
             for e in edges:
                 if random.random() < p_edge:
                     H.add_edge(*e)
+            # check reachability
             if s in H and d in H and nx.has_path(H, s, d):
-                self.path_up_frames.append(H)
+                try:
+                    path_nodes = tuple(nx.shortest_path(H, s, d))
+                except Exception:
+                    path_nodes = tuple()
+                path_map.setdefault(path_nodes, []).append(H)
             else:
-                self.path_down_frames.append(H) 
+                down_list.append(H)
+
+        # store grouped up-frames as list of lists (stable ordering by stringified path)
+        # ensure reproducible order
+        ordered_keys = sorted(path_map.keys(), key=lambda k: (len(k), tuple(map(str, k))))
+        self.path_up_frames = [path_map[k] for k in ordered_keys]
+        self.path_down_frames = down_list
+        # keep auxiliary info
+        self.path_up_keys = ordered_keys
 
     def generateMPCFrames(self,
                                   limited_G: nx.Graph,
