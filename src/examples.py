@@ -40,7 +40,7 @@ def main(test: str = "SPC", viz: bool = False):
     # Options: "SPC" (Single Path Constraint), "MPC" (Multi Path Constraint),
     # "Dynamic community detection" (self explanatory), "sweep" (parameter sweep example),
     # "batch" (load previously saved batch data and visualize)
-    test = "SPC"
+    test = "MPC"
     viz = True
     verbose = False
 
@@ -52,9 +52,9 @@ def main(test: str = "SPC", viz: bool = False):
 
         frames = 50 # need to change name to make it more clear, this is number of timeline frames
         InversepathLength = 1 # TODO : enforce geometric path length constraint in timeline generation
-        path_life = 0.5
-        stability = 0.8
-        pathPersistency = 1 # TODO : enforce that a given path remains the same when alive
+        path_life = 0.5       # DONE : enforce path lifetime over time
+        stability = 0.8       # DONE : enforce path stability over time
+        pathPersistency = 1   # DONE : enforce that a given path remains the same when alive
         mode = "blocks"
     
         print("Single Path Constraint Test")
@@ -83,7 +83,7 @@ def main(test: str = "SPC", viz: bool = False):
         timeLine = timeline_block_generator.generate_blocks()
 
         print("Time line : ", timeLine)
-        
+
         DynaGA = SPCDynamicGraph()
         DynaGA.buildDynaGraph(timeLine, pathUpFrames, pathDownFrames)
         DynaGAset = DynaGA.generateUniqueSet(timeLine, pathUpFrames, pathDownFrames, target_count=5, seed = 42, max_enumeration=1000)
@@ -122,33 +122,57 @@ def main(test: str = "SPC", viz: bool = False):
     # -----------------------------
     # Multi path constraint exemple
     if test == "MPC":
+        frames = 20
         pairs = [("A","D"), ("C","F")]
+        nPairs = len(pairs)
+        pathLifeTime = 0.5
+        stability = 0.8
+        pathPersistency = 1  # test path persistency (0.0..1.0)
+        mode = "indep" # options: "sync" (default) or "indep"
+
         limitedMPC = SourceGraphAugmenter.augmentBaseGraph(G, pairs,
                                                         seed = 1,
                                                         verbose = False)
         print("\n","Original Graph edges: ", G.edges())
         print("Limited Graph edges: ", limitedMPC.edges(), "\n")
+
         frame_generator = FrameGenerator()
         MPCFrameSet = frame_generator.generateMPCFrames(limitedMPC,
                                                         pairs,
-                                                        trials=1000,
+                                                        trials=3000,
                                                         p_edge=0.5,
-                                                        seed = 1)
-        
-        frames = 50
-        nPairs = len(pairs)
-        pathLifeTime = 0.5
-        stability = 0.8
-        mode = "indep" # options: "sync" (default) or "indep"
-        timelineGen = MPCTimelineBlockGenerator(frames, nPairs, pathLifeTime, stability, mode, seed = 40)
-        # timeline_block_generator = SPCTimelineBlockGenerator(frames, path_life, stability, mode)
-        timeLine = timelineGen.generate()
-        # print("Time line : ", timeLine, "\n")
+                                                        seed = 1,)
 
+        # Timeline with per-pair path ids (None for down, int id for up)
+        timelineGen = MPCTimelineBlockGenerator(frames, nPairs, pathLifeTime, stability, mode, seed = 40, pathPersistency = pathPersistency)
+        timeLine = timelineGen.generate()
+        print("Generated MPC timeline (None=int down / ints = path ids):")
+        print(timeLine, "\n")
+        
+        # Build a greedy MPC dynamic graph honoring pid persistence (force=True to fallback if needed)
+        MPCDynaGA = MPCDynamicGraph()
+        MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet, seed=1, no_double=True, allow_hamming_fallback=True, force=True)
+
+        print("Selected frame indices for built dynamic graph:")
+        print(getattr(MPCDynaGA, "selected_frame_indices", None))
+
+        # Inspect per-pair path keys for selected frames to check persistence behavior
+        per_pair = MPCFrameSet.get('per_pair', [])
+        sel_idxs = getattr(MPCDynaGA, "selected_frame_indices", [])
+        if per_pair and sel_idxs and verbose:
+            print("\nPer-frame selected path keys for each pair (None => down):")
+            for fi, idx in enumerate(sel_idxs):
+                row = []
+                for pi in range(len(per_pair)):
+                    idx_to_path = per_pair[pi].get('idx_to_path', {})
+                    row.append(idx_to_path.get(idx, None))
+                print(f"frame {fi}: timeline ids={timeLine[fi]}  selected_paths={tuple(row)}")
+        
+    
         MPCDynaGA = MPCDynamicGraph()
         MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
-        MPCDynaGAset = MPCDynaGA.generateUniqueSet(timeLine, MPCFrameSet, target_count=5, seed = 42, max_enumeration=1000)
-
+        MPCDynaGAset = MPCDynaGA.generateUniqueSet(timeLine, MPCFrameSet, target_count=2, seed = 42, max_enumeration=10000)
+        print("MPC Dynamic Graph length: ", len(MPCDynaGAset))
         if viz == True:
             timeline_visualizer = Visualizer(timeLine)
             timeline_visualizer.visualize_dynamic_graph(MPCDynaGA.DynamicGraph, target_pairs=pairs)

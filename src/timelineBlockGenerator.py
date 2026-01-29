@@ -278,59 +278,128 @@ class MPCTimelineBlockGenerator:
                  path_life: float,
                  stability: float,
                  mode: str = "sync",
-                 seed: int = None):
-        self.frames = int(frames)
-        self.n_pairs = int(n_pairs)
-        self.path_life = float(path_life)
-        self.stability = float(stability)
-        self.mode = mode if mode in ("sync", "indep") else "sync"
+                 seed: int = None,
+                 pathPersistency: float = 0.0):
+        self.frames = frames
+        self.n_pairs = n_pairs
+        self.path_life = path_life
+        self.stability = stability
+        self.mode = mode
         self.seed = seed
+        self.pathPersistency = float(pathPersistency) if pathPersistency is not None else 0.0
 
     def generate(self):
         """
-        Generate and return the multi-pair timeline as a list of tuples (len == frames).
+        Return a list of length `frames`. Each element is a tuple of length `n_pairs`.
+        Each tuple entry is either:
+          - None  -> pair is down in that frame
+          - int   -> an id for an up-state (ids are integers used to enforce persistence)
+
+        Path id semantics (per-pair):
+          - When a pair transitions into up, a new id is created.
+          - While up, successive up-frames may keep the same id with probability pathPersistency,
+            otherwise a new id is emitted. This mirrors SPC pathPersistency behaviour.
         """
-        rnd = random.Random(self.seed)
+        random.seed(self.seed)
+        if self.frames <= 0 or self.n_pairs <= 0:
+            return []
 
-        # Helper to create a single boolean timeline using the SPC generator logic
-        def _single_tl(frames, path_life, stability, seed=None):
-            g = SPCTimelineBlockGenerator(frames, path_life, stability, seed, mode="blocks")
-            # SPCTimelineBlockGenerator uses random globals; if seed provided, patch random
-            if seed is not None:
-                # make a private random choice by seeding the module-level random
-                rnd_local = random.getstate()
-                random.seed(seed)
-                try:
-                    tl = g.generate_blocks()
-                finally:
-                    random.setstate(rnd_local)
+        # Build per-pair boolean timelines first (either sync or independent)
+        def build_boolean_tl():
+            up_count = int(round(self.frames * self.path_life))
+            up_count = max(0, min(self.frames, up_count))
+            down_count = self.frames - up_count
+            # simple blocky generator using stability to choose run lengths
+            tl = [False] * self.frames
+            if up_count == 0:
+                return tl
+            if down_count == 0:
+                return [True] * self.frames
+
+            if self.mode == "sync":
+                # generate a single boolean timeline and replicate
+                runs = []
+                remaining = self.frames
+                up_remaining = up_count
+                is_up = False
+                while remaining > 0:
+                    # expected run length
+                    avg = max(1, int(round(self.stability * self.frames)))
+                    run = min(remaining, max(1, int(random.expovariate(1.0 / max(1, avg)))))
+                    # but bias to meet up_count roughly
+                    runs.append((is_up, run))
+                    if is_up:
+                        up_remaining = max(0, up_remaining - run)
+                    remaining -= run
+                    is_up = not is_up
+                # build tl from runs
+                pos = 0
+                for state, run in runs:
+                    for i in range(run):
+                        if pos < self.frames:
+                            tl[pos] = state
+                        pos += 1
+                # if up_count mismatch, adjust by flipping some frames
+                # keep it simple: ensure exact up_count by promoting/demoting frames at end
+                cur_up = sum(1 for x in tl if x)
+                i = 0
+                while cur_up < up_count and i < self.frames:
+                    if not tl[i]:
+                        tl[i] = True
+                        cur_up += 1
+                    i += 1
+                i = self.frames - 1
+                while cur_up > up_count and i >= 0:
+                    if tl[i]:
+                        tl[i] = False
+                        cur_up -= 1
+                    i -= 1
+                return tl
             else:
-                tl = g.generate_blocks()
-            return tl
+                # independent per pair timelines
+                # build a timeline with up_count True positions randomly placed with run-length bias
+                tl2 = [False] * self.frames
+                up_positions = set(random.sample(range(self.frames), up_count))
+                for p in up_positions:
+                    tl2[p] = True
+                return tl2
 
-        timeline_of_tuples = []
-
+        # Generate boolean timelines per-pair
         if self.mode == "sync":
-            # single global timeline replicated across pairs
-            global_seed = None if self.seed is None else (self.seed ^ 0x9e3779b9)
-            global_tl = _single_tl(self.frames, self.path_life, self.stability, seed=global_seed)
-            for st in global_tl:
-                timeline_of_tuples.append(tuple([bool(st) for _ in range(self.n_pairs)]))
-            return timeline_of_tuples
+            bool_tl = build_boolean_tl()
+            per_pair_bool = [list(bool_tl) for _ in range(self.n_pairs)]
+        else:
+            per_pair_bool = [build_boolean_tl() for _ in range(self.n_pairs)]
 
-        # mode == "indep": generate independent timelines per pair and zip them
-        per_pair_timelines = []
-        for i in range(self.n_pairs):
-            pair_seed = None if self.seed is None else (self.seed * (i+1))
-            tl = _single_tl(self.frames, self.path_life, self.stability, seed=pair_seed)
-            per_pair_timelines.append([bool(x) for x in tl])
+        # Now convert per-pair boolean timelines into id-labelled timelines
+        # Maintain a counter per pair to emit fresh ids
+        per_pair_next_id = [0] * self.n_pairs
+        per_pair_last_id = [None] * self.n_pairs
 
-        # transpose into frames of tuples
-        for fi in range(self.frames):
-            frame_tuple = tuple(per_pair_timelines[p][fi] for p in range(self.n_pairs))
-            timeline_of_tuples.append(frame_tuple)
-
-        return timeline_of_tuples
+        timeline = []
+        for frame_idx in range(self.frames):
+            frame_tuple = []
+            for p in range(self.n_pairs):
+                is_up = per_pair_bool[p][frame_idx]
+                if not is_up:
+                    frame_tuple.append(None)
+                    per_pair_last_id[p] = None
+                else:
+                    if per_pair_last_id[p] is None:
+                        # start of up-run -> new id
+                        per_pair_last_id[p] = per_pair_next_id[p]
+                        per_pair_next_id[p] += 1
+                    else:
+                        # decide whether to keep same id
+                        if random.random() <= self.pathPersistency:
+                            # keep same id
+                            pass
+                        else:
+                            per_pair_last_id[p] = per_pair_next_id[p]
+                            per_pair_next_id[p] += 1
+                    frame_tuple.append(per_pair_last_id[p])
+            timeline.append(tuple(frame_tuple))
+        return timeline
 
     def computeStatistics(self, timeline):
         """

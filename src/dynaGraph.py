@@ -4,6 +4,12 @@ import networkx as nx
 import itertools
 import math
 
+# local toggle: set to True to enable prints/logging in this file, False to silence
+DG_LOG = False
+def _log(*args, **kwargs):
+    if DG_LOG:
+        print(*args, **kwargs)
+
 class dynamicGraph:
     """
     Base class for DynamicGraph structures.
@@ -177,7 +183,7 @@ class SPCDynamicGraph:
            up/down the previous primary/fallback logic is preserved.
         """
         random.seed(seed)
-        print("Generating unique SPCDynamicGraph set with target_count = ", target_count)
+        _log("Generating unique SPCDynamicGraph set with target_count = ", target_count)
 
         if target_count <= 0:
             return []
@@ -365,7 +371,7 @@ class SPCDynamicGraph:
                 # conservative estimate, but prevent zero which would break logic
                 est_total = int(avg_prod * assignment_count)
                 total_combinations = max(est_total, assignment_count, 1)
-                print(f"estimate total_combinations={total_combinations} (assignment_count={assignment_count}, avg_prod={avg_prod:.2f})")
+                _log(f"estimate total_combinations={total_combinations} (assignment_count={assignment_count}, avg_prod={avg_prod:.2f})")
 
         # enumeration path if small enough
         if total_combinations <= max_enumeration:
@@ -398,7 +404,13 @@ class SPCDynamicGraph:
             
         # randomized sampling path (total_combinations huge)
         attempts = 0
-        max_attempts = int(min(max_enumeration, total_combinations if total_combinations > 0 else max_enumeration, target_count * 50))
+        # Allow more trials for hard labeled constraints so rare-valid combos can be found.
+        max_attempts = int(min(
+            max_enumeration,
+            total_combinations if total_combinations > 0 else max_enumeration,
+            max(target_count * 1000, 1000)
+        ))
+        _log(f"[generateUniqueSet-MPC] max_attempts={max_attempts}")
         while len(results) < target_count and attempts < max_attempts:
             # pick a random assignment for labeled pids
             if m == 0:
@@ -416,30 +428,17 @@ class SPCDynamicGraph:
 
         # best-effort deterministic fill if still short and not too enormous
         if len(results) < target_count and total_combinations <= max_enumeration * 5:
-            if m == 0:
-                pools_a = pools_for_assignment(())
-                sizes = [len(p) for p in pools_a]
-                for indices in itertools.product(*(range(s) for s in sizes)):
-                    frames_seq = [pools_a[i][indices[i]] for i in range(frames)]
-                    dg = build_and_record(frames_seq)
-                    if dg:
-                        results.append(dg)
-                        if len(results) >= target_count:
-                            break
-            else:
-                for assignment in itertools.product(range(n_groups), repeat=m):
-                    pools_a = pools_for_assignment(assignment)
-                    sizes = [len(p) for p in pools_a]
-                    for indices in itertools.product(*(range(s) for s in sizes)):
-                        frames_seq = [pools_a[i][indices[i]] for i in range(frames)]
-                        dg = build_and_record(frames_seq)
-                        if dg:
-                            results.append(dg)
-                            if len(results) >= target_count:
-                                break
+            _log("[generateUniqueSet-MPC] doing best-effort deterministic fill")
+            for indices in itertools.product(*(range(s) for s in sizes)):
+                frames_seq = [pools[i][indices[i]] for i in range(frames)]
+                dg = build_and_record(frames_seq)
+                if dg:
+                    results.append(dg)
                     if len(results) >= target_count:
                         break
+            _log(f"[generateUniqueSet-MPC] deterministic fill finished, total found {len(results)}")
 
+        _log(f"[generateUniqueSet-MPC] returning {len(results)} dynamics")
         return results
     
 class MPCDynamicGraph:
@@ -469,82 +468,174 @@ class MPCDynamicGraph:
                        mpc_frame_set: dict,
                        seed: int = None,
                        no_double: bool = True,
-                       allow_hamming_fallback: bool = True) -> List[nx.Graph]:
+                       allow_hamming_fallback: bool = True,
+                       force: bool = True) -> List[nx.Graph]:
         """
-        Build DynamicGraph picking frames from mpc_frame_set that match each tuple
-        in mpc_timeline. If an exact match does not exist for a timeline frame, we
-        optionally fallback to the closest status by Hamming distance, then to any unused
-        frame, then to any frame.
-
-        Returns the list of selected nx.Graph frames and sets attributes on self.
+        Modified to accept MPC timeline in the new form:
+          - mpc_timeline: list of tuples of Optional[int] per pair (None -> down, int -> up with id)
+        Greedy persistence:
+          - when a non-None id appears for a given pair, we map that id -> a chosen path_key (first occurrence)
+            and subsequent frames that reference same id will prefer frames with the same path_key.
+        force: if False, abort when a required pool is empty and no fallback allowed.
+               if True, attempt fallbacks (Hamming, any-unused, any) with warnings.
         """
         rnd = random.Random(seed)
 
         frames = mpc_frame_set.get("frames", [])
         cases = mpc_frame_set.get("cases", {})
+        per_pair = mpc_frame_set.get("per_pair", None)
+        pairs = mpc_frame_set.get("pairs", None)
 
         if not mpc_timeline:
             raise ValueError("mpc_timeline is empty")
         if not frames:
             raise ValueError("mpc_frame_set has no frames")
 
-        # normalize timeline tuples
-        timeline = [tuple(bool(x) for x in t) for t in mpc_timeline]
+        # normalize timeline entries to tuples; detect if entries are id-labeled (None or int) or boolean tuples
+        labeled = False
+        # target structure: list of tuples of Optional[int] (None -> down, int -> up)
+        timeline = []
+        for t in mpc_timeline:
+            tpl = tuple(x for x in t)
+            timeline.append(tpl)
+            if any(x is not None for x in tpl):
+                labeled = True
 
-        # copy available pools so we can remove indices when no_double is requested
+        # precompute idx -> status (boolean tuple)
+        idx_to_status = mpc_frame_set.get('idx_to_status', None)
+        if not idx_to_status:
+            # build from cases
+            idx_to_status = {}
+            for status, idxs in cases.items():
+                for i in idxs:
+                    idx_to_status[i] = status
+
+        # helper: status tuple (bool) from labeled timeline entry
+        def status_from_labeled(entry):
+            return tuple(((x is not None) for x in entry))
+
+        # prepare available pools (copy)
         available = {k: list(v) for k, v in cases.items()}
-
-        # build reverse map idx -> status tuple for quick lookup
-        idx_to_status = {}
-        for status, idxs in cases.items():
-            for i in idxs:
-                idx_to_status[i] = status
 
         chosen_indices: List[int] = []
         chosen_statuses: List[Tuple[bool, ...]] = []
 
         all_indices = set(range(len(frames)))
 
-        for desired in timeline:
-            # try exact pool first
-            pool = available.get(desired, [])
+        # prepare persistence maps per pair: mapping pid -> path_key
+        pid_maps_per_pair = []
+        n_pairs = len(timeline[0])
+
+        # extract per_pair idx_to_path if available
+        per_pair_idx_to_path = []
+        if per_pair:
+            for pp in per_pair:
+                per_pair_idx_to_path.append(pp.get('idx_to_path', {}))
+        else:
+            # try to compute if 'pairs' & frames available (best-effort)
+            per_pair_idx_to_path = [ {} for _ in range(n_pairs) ]
+            if pairs:
+                for pi, (s, d) in enumerate(pairs):
+                    for idx, G in enumerate(frames):
+                        try:
+                            p = nx.shortest_path(G, source=s, target=d)
+                            per_pair_idx_to_path[pi][idx] = tuple(map(str, p))
+                        except (nx.NetworkXNoPath, nx.NodeNotFound):
+                            per_pair_idx_to_path[pi][idx] = None
+
+        for frame_entry in timeline:
+            desired_status = status_from_labeled(frame_entry)
+            # base pool: exact match of status
+            pool = available.get(desired_status, []).copy()
+            if not pool:
+                if force:
+                    # fallback flow with warning
+                    _log(f"warning: no exact pool for status {desired_status}, attempting fallbacks (force=True)")
+                    # Try hamming fallback
+                    found = False
+                    if allow_hamming_fallback and cases:
+                        candidates = sorted(cases.keys(), key=lambda s: self._hamming(s, desired_status))
+                        for cand in candidates:
+                            pool2 = available.get(cand, [])
+                            if pool2:
+                                pool = pool2.copy()
+                                found = True
+                                break
+                    if not found:
+                        # fallback to any unused if no_double
+                        remaining = list(all_indices - set(chosen_indices)) if no_double else []
+                        if remaining:
+                            pool = remaining
+                        else:
+                            # last resort all frames
+                            pool = list(all_indices)
+                else:
+                    print(f"aborting: no pool for status {desired_status} and force=False")
+                    raise RuntimeError(f"No pool for status {desired_status}")
+
+            # apply greedy pid constraints (if labeled)
+            # build mapping pid -> chosen path_key for this frame set if needed
+            # pid_maps_per_pair will be built on demand
+            if labeled:
+                # ensure pid_maps_per_pair length
+                while len(pid_maps_per_pair) < n_pairs:
+                    pid_maps_per_pair.append({})
+
+                # for each pair with a non-None pid, try to filter pool
+                filtered = pool
+                for pi, pid in enumerate(frame_entry):
+                    if pid is None:
+                        continue
+                    pid_map = pid_maps_per_pair[pi]
+                    # if pid already bound -> filter pool to frames matching that path_key
+                    if pid in pid_map:
+                        desired_path = pid_map[pid]
+                        filtered = [i for i in filtered if per_pair_idx_to_path[pi].get(i, None) == desired_path]
+                        if not filtered:
+                            break
+                    else:
+                        # bind pid greedily to some candidate's path_key (choose random candidate that is up for this pair)
+                        candidates_with_path = [i for i in filtered if per_pair_idx_to_path[pi].get(i, None) is not None]
+                        if candidates_with_path:
+                            chosen_idx = rnd.choice(candidates_with_path)
+                            pid_map[pid] = per_pair_idx_to_path[pi].get(chosen_idx)
+                            # now filter to match that chosen path
+                            desired_path = pid_map[pid]
+                            filtered = [i for i in filtered if per_pair_idx_to_path[pi].get(i, None) == desired_path]
+                        else:
+                            # no candidate with a path for this pair -> empty
+                            filtered = []
+                            break
+                if not filtered:
+                    if force:
+                        _log(f"warning: pid constraints left empty pool for frame {frame_entry}, relaxing constraints")
+                        # relax pid constraints and keep base pool
+                        filtered = pool
+                    else:
+                        _log(f"aborting: pid constraints unsatisfiable for frame {frame_entry} and force=False")
+                        raise RuntimeError(f"pid constraints unsatisfiable for frame {frame_entry}")
+                pool = filtered
+
+            # choose one from pool
             if pool:
                 idx = rnd.choice(pool)
                 chosen_indices.append(idx)
-                chosen_statuses.append(desired)
-                if no_double:
-                    pool.remove(idx)
-                continue
-
-            # fallback by Hamming distance among existing case keys
-            found = False
-            if allow_hamming_fallback and cases:
-                candidates = sorted(cases.keys(), key=lambda s: self._hamming(s, desired))
-                for cand in candidates:
-                    pool2 = available.get(cand, [])
-                    if pool2:
-                        idx = rnd.choice(pool2)
-                        chosen_indices.append(idx)
-                        chosen_statuses.append(cand)
-                        if no_double:
-                            pool2.remove(idx)
-                        found = True
-                        break
-            if found:
-                continue
-
-            # fallback to any unused frame
-            remaining = list(all_indices - set(chosen_indices)) if no_double else []
-            if remaining:
-                idx = rnd.choice(remaining)
-                chosen_indices.append(idx)
                 chosen_statuses.append(idx_to_status.get(idx, tuple()))
+                if no_double:
+                    # remove from available pools where present
+                    for k in list(available.keys()):
+                        if idx in available[k]:
+                            available[k].remove(idx)
                 continue
-
-            # last resort: pick any random frame
-            idx = rnd.randrange(len(frames))
-            chosen_indices.append(idx)
-            chosen_statuses.append(idx_to_status.get(idx, tuple()))
+            else:
+                # pool empty after all attempts
+                if force:
+                    # pick any frame as last resort
+                    idx = rnd.randrange(len(frames))
+                    chosen_indices.append(idx)
+                    chosen_statuses.append(idx_to_status.get(idx, tuple()))
+                else:
+                    raise RuntimeError(f"No candidate found for frame {frame_entry}")
 
         # assemble DynamicGraph frames
         self.DynamicGraph = [frames[i] for i in chosen_indices]
@@ -558,19 +649,12 @@ class MPCDynamicGraph:
                             mpc_frame_set: dict,
                             target_count: int,
                             seed: int = None,
-                            max_enumeration: int = 1000000) -> List['MPCDynamicGraph']:
+                            max_enumeration: int = 1000000,
+                            force: bool = True) -> List['MPCDynamicGraph']:
         """
-        Generate up to `target_count` distinct MPCDynamicGraph instances following `mpc_timeline`.
-        Distinctness is enforced frame-wise (exact graph equality via simple fingerprint).
-
-        Parameters:
-          - mpc_timeline: list of status tuples
-          - mpc_frame_set: output of FrameGenerator.generate_frames_for_pairs (expects 'frames' and 'cases')
-          - target_count: desired number of unique dynamics
-          - seed: optional int to seed random sampling
-          - max_enumeration: threshold to switch from exhaustive enumeration to random sampling
-
-        Returns list of MPCDynamicGraph objects (length <= target_count)
+        Generate unique MPCDynamicGraph sequences honoring greedy pid persistence if
+        mpc_timeline entries are id-labeled (None or int per pair).
+        force controls whether to attempt fallbacks when a pool is empty (True), or abort (False).
         """
         rnd = random.Random(seed)
 
@@ -584,24 +668,53 @@ class MPCDynamicGraph:
         if not frames:
             raise ValueError("mpc_frame_set has no frames")
 
-        # For each timeline position, build a pool of candidate frame indices (fallback to all indices)
+        # determine if timeline is labeled (None/int) or simple booleans
+        labeled = any(any(x is not None for x in t) for t in mpc_timeline)
+
+        _log(f"[generateUniqueSet-MPC] frames={len(frames)}, cases_keys={len(cases)}, target_count={target_count}, labeled={labeled}, seed={seed}")
+
+        # build per-frame pools by status (like before)
         pools_idx: List[List[int]] = []
         all_indices = list(range(len(frames)))
-        for status in mpc_timeline:
-            status = tuple(bool(x) for x in status)
+        # also keep per_pair idx_to_path if present
+        per_pair = mpc_frame_set.get('per_pair', None)
+        per_pair_idx_to_path = []
+        if per_pair:
+            per_pair_idx_to_path = [pp.get('idx_to_path', {}) for pp in per_pair]
+        else:
+            # best-effort empty maps if not present
+            per_pair_idx_to_path = []
+
+        # normalize and produce desired status tuples from labeled timeline
+        desired_statuses = []
+        for entry in mpc_timeline:
+            # entry may be boolean tuple or labeled tuple (None/int)
+            if any(x is None or isinstance(x, int) for x in entry):
+                desired_statuses.append(tuple((x is not None) for x in entry))
+            else:
+                desired_statuses.append(tuple(bool(x) for x in entry))
+
+        for si, status in enumerate(desired_statuses):
             idxs = list(cases.get(status, []))
             if not idxs:
-                # fallback: use all frames
-                idxs = all_indices.copy()
+                if force:
+                    # fallback to all frames (but warn)
+                    _log(f"[generateUniqueSet-MPC] warning: no exact pool for status {status} (frame {si}), falling back to all frames (force=True)")
+                    idxs = all_indices.copy()
+                else:
+                    raise RuntimeError(f"No pool for status {status}")
             pools_idx.append(idxs)
 
-        # compute total combinations
         sizes = [len(p) for p in pools_idx]
+        _log(f"[generateUniqueSet-MPC] pools per frame: {sizes}")
+
+        # quick size calc
         total_combinations = 1
         for s in sizes:
             total_combinations *= s
+        _log(f"[generateUniqueSet-MPC] estimated total_combinations (product of sizes) = {total_combinations}")
 
-        # local fingerprint helpers
+        # fingerprint helpers (same as before)
         def _frame_fingerprint(g: nx.Graph):
             if g is None:
                 return ("nodes", tuple(), "edges", tuple())
@@ -615,49 +728,115 @@ class MPCDynamicGraph:
         results: List[MPCDynamicGraph] = []
         seen = set()
 
+        # check a candidate choice for pid-consistency (greedy):
+        def choice_accepts(choice_idxs: List[int], labeled_timeline):
+            # labeled_timeline: original mpc_timeline entries (None/int per pair)
+            if not labeled:
+                return True
+            # ensure per_pair_idx_to_path has entries for all pairs; if not, compute is impossible => reject
+            if not per_pair_idx_to_path:
+                # attempt best-effort: accept but warn
+                _log("[generateUniqueSet-MPC] warning: per_pair path info missing; cannot enforce pid persistence -> accepting any choice")
+                return True
+            pid_maps_per_pair = [{} for _ in range(len(per_pair_idx_to_path))]
+            for pos, idx in enumerate(choice_idxs):
+                entry = labeled_timeline[pos]
+                # for each pair in entry
+                for pi, pid in enumerate(entry):
+                    if pid is None:
+                        continue
+                    path_key = per_pair_idx_to_path[pi].get(idx, None)
+                    if pid in pid_maps_per_pair[pi]:
+                        # relaxed handling: treat None as "unknown wildcard"
+                        existing = pid_maps_per_pair[pi][pid]
+                        if existing is None and path_key is not None:
+                            # bind unknown to observed path_key
+                            pid_maps_per_pair[pi][pid] = path_key
+                        elif existing is not None and path_key is None:
+                            # keep existing binding (observed None is wildcard)
+                            pass
+                        elif existing is None and path_key is None:
+                            # both unknown -> still compatible
+                            pass
+                        elif existing != path_key:
+                            # real conflict
+                            return False
+                    else:
+                        # bind pid to observed path_key (may be None)
+                        pid_maps_per_pair[pi][pid] = path_key
+            return True
+
+        # builder function (with logging)
         def build_from_choice_indices(choice_idxs: List[int]):
             seq = [frames[i] for i in choice_idxs]
             fp = _timeline_fingerprint(seq)
             if fp in seen:
+                _log(f"[generateUniqueSet-MPC] skipped duplicate fingerprint for indices {choice_idxs}")
                 return None
             seen.add(fp)
             dg = MPCDynamicGraph()
             dg.DynamicGraph = seq.copy()
             dg.selected_frame_indices = choice_idxs.copy()
-            dg.selected_statuses = [mpc_frame_set.get("cases_map", {}).get(i, mpc_frame_set.get("cases", {})) for i in choice_idxs]
+            _log(f"[generateUniqueSet-MPC] recorded DG for indices {choice_idxs}")
             return dg
 
-        # enumeration path
+        # enumeration path (still expensive but we filter by pid consistency)
         if total_combinations <= max_enumeration:
-            # iterate deterministic product of indices within pools
+            _log("[generateUniqueSet-MPC] doing exact enumeration")
             for combo in itertools.product(*(range(len(pools_idx[i])) for i in range(len(pools_idx)))):
-                # map combo positions to actual frame indices
                 choice = [pools_idx[i][combo[i]] for i in range(len(combo))]
+                if labeled:
+                    if not choice_accepts(choice, mpc_timeline):
+                        # debug: show small sample of rejections
+                        _log(f"[generateUniqueSet-MPC] rejected by choice_accepts: {choice}")
+                        continue
                 dg = build_from_choice_indices(choice)
                 if dg:
                     results.append(dg)
                     if len(results) >= target_count:
                         break
+            _log(f"[generateUniqueSet-MPC] enumeration finished, found {len(results)} results")
             return results
 
         # randomized sampling path
+        _log("[generateUniqueSet-MPC] entering randomized sampling path")
         attempts = 0
-        max_attempts = int(min(max_enumeration, total_combinations, target_count * 50))
+        # Allow more trials for hard labeled constraints so rare-valid combos can be found.
+        max_attempts = int(min(
+            max_enumeration,
+            total_combinations if total_combinations > 0 else max_enumeration,
+            max(target_count * 1000, 1000)
+        ))
+        _log(f"[generateUniqueSet-MPC] max_attempts={max_attempts}")
         while len(results) < target_count and attempts < max_attempts:
             choice = [rnd.choice(pools_idx[i]) for i in range(len(pools_idx))]
+            if labeled and not choice_accepts(choice, mpc_timeline):
+                if attempts < 50:
+                    _log(f"[generateUniqueSet-MPC] attempt {attempts} rejected by choice_accepts: {choice}")
+                attempts += 1
+                continue
+            if attempts < 50:
+                _log(f"[generateUniqueSet-MPC] attempt {attempts} candidate choice: {choice}")
             dg = build_from_choice_indices(choice)
             if dg:
                 results.append(dg)
             attempts += 1
 
+        _log(f"[generateUniqueSet-MPC] sampling finished after {attempts} attempts, found {len(results)} results")
+
         # best-effort deterministic fill if still short (bounded)
         if len(results) < target_count and total_combinations <= max_enumeration * 5:
+            _log("[generateUniqueSet-MPC] doing best-effort deterministic fill")
             for combo in itertools.product(*(range(len(pools_idx[i])) for i in range(len(pools_idx)))):
                 choice = [pools_idx[i][combo[i]] for i in range(len(combo))]
+                if labeled and not choice_accepts(choice, mpc_timeline):
+                    continue
                 dg = build_from_choice_indices(choice)
                 if dg:
                     results.append(dg)
                     if len(results) >= target_count:
                         break
+            _log(f"[generateUniqueSet-MPC] deterministic fill finished, total found {len(results)}")
 
+        _log(f"[generateUniqueSet-MPC] returning {len(results)} dynamics")
         return results

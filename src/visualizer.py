@@ -271,7 +271,7 @@ class Visualizer:
         """
         if seed is not None:
             random.seed(seed)
-
+        print(f"Animating up to {n} random dynamics from pool of {len(dynamics)} dynamics.")
         # normalize dynamics into list of list-of-graphs
         pool = []
         for d in dynamics:

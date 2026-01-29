@@ -68,58 +68,80 @@ class FrameGenerator:
 
         Returns a dict with:
           - frames: list of generated nx.Graph objects (length == trials)
+          - pairs: the input pairs list (for consumer convenience)
           - cases: dict mapping status_tuple -> list of frame indices where that exact pattern occurs
-                   (status_tuple is tuple(bool, ...) in same order as `pairs`)
           - counts: dict mapping status_tuple -> integer count
-          - per_pair: list aligned with `pairs`, each entry is {'pair': (s,d), 'up_indices': [...], 'down_indices': [...]}
-
-        Example keys in cases:
-          (False, False, False) -> all pairs down
-          (True, False, False)  -> first pair up, others down
-          (True, True, True)    -> all pairs up
+          - per_pair: list aligned with `pairs`, each entry is dict with:
+                'pair': (s,d)
+                'up_indices': [...], 'down_indices': [...]
+                'idx_to_path': { frame_idx: path_tuple or None }
+                'path_map': { path_tuple: [frame_idx, ...] }
         """
         rnd = random.Random(seed)
         edges = list(limited_G.edges())
 
         frames: List[nx.Graph] = []
         cases: Dict[Tuple[bool, ...], List[int]] = {}
-        per_pair: List[Dict] = []
-        for (s, d) in pairs:
-            per_pair.append({"pair": (s, d), "up_indices": [], "down_indices": []})
-
+        per_pair = []
+        # generate frames (simple Erdos-Renyi subgraph sampling of limited_G)
         for ti in range(trials):
-            # build random frame
-            H = nx.Graph()
-            H.add_nodes_from(limited_G.nodes())
-            for e in edges:
+            G = nx.Graph()
+            G.add_nodes_from(limited_G.nodes())
+            for (u, v) in edges:
                 if rnd.random() < p_edge:
-                    H.add_edge(*e)
-            frames.append(H)
+                    G.add_edge(u, v)
+            frames.append(G)
 
-            # evaluate each pair
-            status: List[bool] = []
-            for pi, (s, d) in enumerate(pairs):
+        # evaluate reachability for each frame / pair
+        idx_to_status = {}
+        for idx, G in enumerate(frames):
+            status = []
+            for (s, d) in pairs:
                 try:
-                    up = (s in H and d in H and nx.has_path(H, s, d))
-                except (nx.NetworkXError, nx.NodeNotFound):
-                    up = False
-                status.append(bool(up))
-                if up:
-                    per_pair[pi]["up_indices"].append(ti)
-                else:
-                    per_pair[pi]["down_indices"].append(ti)
-
+                    # reachability via shortest_path
+                    path = nx.shortest_path(G, source=s, target=d)
+                    status.append(True)
+                except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    status.append(False)
             status_t = tuple(status)
-            cases.setdefault(status_t, []).append(ti)
+            idx_to_status[idx] = status_t
+            cases.setdefault(status_t, []).append(idx)
+
+        # build per-pair information (path keys)
+        per_pair = []
+        for pi, (s, d) in enumerate(pairs):
+            idx_to_path = {}
+            path_map = {}
+            up_indices = []
+            down_indices = []
+            for idx, G in enumerate(frames):
+                try:
+                    path = nx.shortest_path(G, source=s, target=d)
+                    # normalize path key as tuple of node names (strings)
+                    path_key = tuple(map(str, path))
+                    idx_to_path[idx] = path_key
+                    path_map.setdefault(path_key, []).append(idx)
+                    up_indices.append(idx)
+                except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    idx_to_path[idx] = None
+                    down_indices.append(idx)
+            per_pair.append({
+                'pair': (s, d),
+                'up_indices': up_indices,
+                'down_indices': down_indices,
+                'idx_to_path': idx_to_path,
+                'path_map': path_map
+            })
 
         counts = {k: len(v) for k, v in cases.items()}
 
         return {
-            "frames": frames,
-            "cases": cases,
-            "counts": counts,
-            "per_pair": per_pair,
-            "pairs": list(map(tuple, pairs))
+            'frames': frames,
+            'pairs': pairs,
+            'cases': cases,
+            'counts': counts,
+            'per_pair': per_pair,
+            'idx_to_status': idx_to_status
         }
 
     def clear_frames(self) -> None:
