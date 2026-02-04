@@ -9,9 +9,12 @@ import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 import numpy as np
 from matplotlib.collections import LineCollection
+import os
+import json
+import glob
 
 class Visualizer:
-    def __init__(self, timeline):
+    def __init__(self, timeline = None):
         self.timeline = timeline
 
     def render_text(self):
@@ -262,7 +265,8 @@ class Visualizer:
                                 absent_node_color='lightgray',
                                 edge_color='gray',
                                 with_labels=True,
-                                target_pairs=None):
+                                target_pairs=None,
+                                titles=None):
         """
         Pick up to `n` dynamics from `dynamics` and animate them side-by-side.
         If `target_pairs` is provided, highlight shortest paths for any pair that
@@ -415,7 +419,7 @@ class Visualizer:
                 lbl = f"{p[0]} -> {p[1]}"
                 legend_handles.append(Line2D([0], [0], color=col, lw=3, label=lbl))
 
-        for ax_top, ax_bottom, info in zip(top_axes, bottom_axes, dyn_info):
+        for i, (ax_top, ax_bottom, info) in enumerate(zip(top_axes, bottom_axes, dyn_info)):
             ax_top.axis('off')
             n_nodes = info["n_nodes"]
             node_list = info["node_list"]
@@ -440,6 +444,9 @@ class Visualizer:
             ax_bottom.add_patch(bar)
             info["bar"] = bar
 
+            # add a per-column title (use provided titles when available)
+            if titles and i < len(titles):
+                ax_top.set_title(str(titles[i]))
             # add legend on top axis if target pairs provided
             if legend_handles:
                 ax_top.legend(handles=legend_handles, title="Target pairs", bbox_to_anchor=(1.02, 1), loc='upper left')
@@ -508,28 +515,158 @@ class Visualizer:
         plt.show()
         return ani
 
-    def plotLoadedData(self, loaded, n_display=None, interval=800, loop=True):
+    def plotLoadedData(self, loaded, n_display=None, interval=800, loop=True, seed=1, target_pairs=None):
         """
-        Plot content returned by load_from_directory().
-        - single -> visualize the dynamic graph (animated)
-        - batch  -> pick up to n_display dynamics and animate them side-by-side
+        Plot content returned by load_from_directory(), a Python object (list/dict)
+        or a JSON-compatible input (JSON string or path to a .json file or saved directory).
 
-        Returns the animation object(s) when possible.
+        - If `loaded` is a directory path -> uses load_from_directory(path)
+        - If `loaded` is a path to a file and file is JSON -> parse JSON
+        - If `loaded` is a JSON string/bytes -> parse JSON
+        - Otherwise falls back to existing behavior for Python list/dict produced by API.
         """
-        if loaded["type"] == "single":
+        def _resolve_input(x):
+            # directory path -> load directory
+            if isinstance(x, str):
+                if os.path.isdir(x):
+                    return load_from_directory(x)
+                if os.path.isfile(x):
+                    # try to parse JSON file
+                    try:
+                        with open(x, "r", encoding="utf-8") as fh:
+                            return json.load(fh)
+                    except Exception:
+                        # if not JSON, try to load as directory (fallback handled above)
+                        raise
+                # try JSON string
+                try:
+                    return json.loads(x)
+                except Exception:
+                    raise ValueError("String `loaded` is neither a directory, a JSON file path nor a JSON string")
+            if isinstance(x, (bytes, bytearray)):
+                try:
+                    return json.loads(x.decode("utf-8"))
+                except Exception:
+                    raise ValueError("Bytes `loaded` is not valid JSON")
+            return x
+
+        # allow JSON/path inputs
+        try:
+            loaded = _resolve_input(loaded)
+        except Exception as e:
+            raise ValueError(f"Unable to interpret `loaded` input: {e}")
+
+        # handle raw sweep results (list of dicts)
+        if isinstance(loaded, list) and all(isinstance(e, dict) and "dynamic_graph" in e for e in loaded):
+            results = loaded
+            if not results:
+                raise RuntimeError("Empty sweep results")
+            # extract dynamics and titles
+            dynamics = [r["dynamic_graph"] for r in results]
+            titles = [f"{r.get('param_name','param')}={r.get('param_value','')}" for r in results]
+            if n_display is None:
+                n_display = min(6, len(dynamics))
+            chosen = dynamics[:n_display]
+            chosen_titles = titles[:n_display]
+            v = Visualizer([])  # use animate_random_dynamics to render multiple columns
+            return v.animate_random_dynamics(chosen, n=len(chosen), interval=interval, loop=loop, seed=seed, titles=chosen_titles, target_pairs=target_pairs)
+
+        # loaded dict returned by load_from_directory()
+        if isinstance(loaded, dict) and loaded.get("type") == "single":
             dg = loaded["dynamic_graph"]
             v = Visualizer([])  # instance used to access method
-            return v.visualize_dynamic_graph(dg, interval=interval, loop=loop)
-        elif loaded["type"] == "batch":
+            return v.visualize_dynamic_graph(dg, interval=interval, loop=loop, target_pairs=target_pairs)
+
+        if isinstance(loaded, dict) and loaded.get("type") == "batch":
             entries = loaded["entries"]
             graphs = [e["dynamic_graph"] for e in entries if e.get("dynamic_graph")]
+            titles = [f"{e.get('param_name','') }={e.get('param_value','')}" for e in entries if e.get("dynamic_graph")]
             if not graphs:
                 raise RuntimeError("No dynamic graphs found in batch to plot.")
             # limit how many to show
             if n_display is None:
                 n_display = min(5, len(graphs))
             chosen = graphs[:n_display]
+            chosen_titles = titles[:n_display]
             v = Visualizer([])  # use animate_random_dynamics to render multiple columns
-            return v.animate_random_dynamics(chosen, n=len(chosen), interval=interval, loop=loop, seed=1)
-        else:
-            raise ValueError("Unknown loaded data type")
+            return v.animate_random_dynamics(chosen, n=len(chosen), interval=interval, loop=loop, seed=seed, titles=chosen_titles, target_pairs=target_pairs)
+
+        raise ValueError("Unknown loaded data type or unsupported format")
+
+def _load_dynamic_graph_from_dir(entry_dir):
+    """
+    Read nodes.txt + adj_frame_*.csv from entry_dir and return a list of networkx.Graph frames.
+    """
+    nodes_file = os.path.join(entry_dir, "nodes.txt")
+    if not os.path.exists(nodes_file):
+        raise FileNotFoundError(f"nodes.txt not found in {entry_dir}")
+
+    with open(nodes_file, "r", encoding="utf-8") as f:
+        nodes = [line.strip() for line in f if line.strip()]
+
+    adj_files = sorted(glob.glob(os.path.join(entry_dir, "adj_frame_*.csv")))
+    if not adj_files:
+        raise FileNotFoundError(f"No adjacency frame CSVs found in {entry_dir}")
+
+    graphs = []
+    for af in adj_files:
+        A = np.loadtxt(af, delimiter=",", dtype=int)
+        G = nx.from_numpy_array(A)
+        mapping = {i: nodes[i] for i in range(len(nodes))}
+        G = nx.relabel_nodes(G, mapping)
+        graphs.append(G)
+    return graphs
+
+def load_from_directory(path):
+    """
+    Inspect `path` and load dynamic graph(s).
+    - If path contains nodes.txt -> returns a single dynamic graph (list of frames).
+    - If path contains index.csv -> returns a list of entries; each entry is dict with keys:
+        {entry_id, entry_dir, param_name, param_value, frames, dynamic_graph}
+    - Otherwise tries to auto-discover subdirectories containing nodes.txt and loads them.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
+    # single dynamic graph directory (has nodes.txt)
+    if os.path.exists(os.path.join(path, "nodes.txt")):
+        dg = _load_dynamic_graph_from_dir(path)
+        return {"type": "single", "dynamic_graph": dg}
+
+    # try index.csv for batch/sweep
+    index_file = os.path.join(path, "index.csv")
+    if not os.path.exists(index_file):
+        # try to find single entry subdirectories automatically
+        subdirs = [os.path.join(path, d) for d in os.listdir(path)
+                   if os.path.isdir(os.path.join(path, d))]
+        results = []
+        for sd in subdirs:
+            try:
+                dg = _load_dynamic_graph_from_dir(sd)
+                results.append({"entry_dir": os.path.basename(sd), "dynamic_graph": dg})
+            except FileNotFoundError:
+                continue
+        return {"type": "batch", "entries": results}
+
+    # parse index.csv entries
+    entries = []
+    with open(index_file, "r", encoding="utf-8") as idxf:
+        reader = csv.DictReader(idxf)
+        for row in reader:
+            entry_dir = os.path.join(path, row.get("entry_dir", "").strip())
+            if not entry_dir:
+                continue
+            try:
+                dg = _load_dynamic_graph_from_dir(entry_dir)
+            except Exception:
+                dg = []
+            entry = {
+                "entry_id": row.get("entry_id"),
+                "entry_dir": row.get("entry_dir"),
+                "param_name": row.get("param_name"),
+                "param_value": row.get("param_value"),
+                "frames": int(row.get("frames")) if row.get("frames") else None,
+                "dynamic_graph": dg
+            }
+            entries.append(entry)
+    return {"type": "batch", "entries": entries}
