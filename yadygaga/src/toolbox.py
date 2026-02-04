@@ -112,30 +112,18 @@ def timelineFeasibleParams(frames: int, path_life: float = None, stability: floa
             'note': f"For stability={stability}, path_life (alpha) must be in [{alpha_min:.3f}, {alpha_max:.3f}]"
         }
 
-def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
+def saveSweepMatrices(sweep_results, out_dir, overwrite=False, file_format: str = "csv"):
     """
-    Persist sweep results to disk as adjacency matrices (CSV) per frame so non-Python
-    tools (C++, etc.) can read them easily.
+    Persist sweep results to disk.
 
-    Directory layout created under out_dir:
-      index.csv                - summary table (entry_id,param_name,param_value,frames,dir)
-      entry_{i}_{param}.json   - metadata for the entry (nodes order, param)
-      entry_{i}_{param}/
-         nodes.txt             - node labels, one per line (defines matrix row/col order)
-         adj_frame_000.csv     - adjacency matrix for frame 0 (rows = nodes order)
-         adj_frame_001.csv
-         ...
-    Parameters:
-      - sweep_results: list of dicts as returned by sweep_mpc_generate()
-        each dict must contain at least: 'param_name', 'param_value', 'dynamic_graph'
-        where 'dynamic_graph' is a list of networkx.Graph frames (or similar with .nodes()/.edges()).
-      - out_dir: base output directory (will be created if missing)
-      - overwrite: if True, remove existing out_dir contents for same entry names
-    Returns:
-      - path to index CSV file
+    file_format: "csv" (default) -> adjacency matrices per-frame as CSV (existing behavior)
+                 "json" -> per-entry JSON file containing nodes and per-frame edge lists.
+
+    Other behavior unchanged.
     """
     os.makedirs(out_dir, exist_ok=True)
     index_rows = []
+    fmt = file_format.lower()
     for i, entry in enumerate(sweep_results):
         param_name = entry.get('param_name', 'param')
         param_value = entry.get('param_value', entry.get(param_name, 'nan'))
@@ -149,7 +137,6 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
         entry_dir = os.path.join(out_dir, entry_dirname)
         if os.path.exists(entry_dir):
             if overwrite:
-                # remove files inside (do not attempt recursive delete of unrelated content)
                 for fn in os.listdir(entry_dir):
                     fp = os.path.join(entry_dir, fn)
                     try:
@@ -158,7 +145,6 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
                     except Exception:
                         pass
             else:
-                # find a new unique name
                 suffix = 1
                 while os.path.exists(entry_dir):
                     entry_dir = os.path.join(out_dir, f"{entry_dirname}_{suffix}")
@@ -177,12 +163,27 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
             for n in nodes:
                 f.write(f"{n}\n")
 
-        # Save adjacency matrix per frame as CSV (0/1 integer entries)
-        for t, G in enumerate(dyn_graph):
-            # ensure adjacency uses same node order
-            A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
-            frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
-            np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+        if fmt == "csv":
+            # Save adjacency matrix per frame as CSV (0/1 integer entries)
+            for t, G in enumerate(dyn_graph):
+                # ensure adjacency uses same node order
+                A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+                frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
+                np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+        elif fmt == "json":
+            # Save compact JSON representation: nodes + per-frame edge lists (node labels)
+            frames_json = []
+            for t, G in enumerate(dyn_graph):
+                edges = [[str(u), str(v)] for (u, v) in G.edges()]
+                frames_json.append({
+                    "frame": t,
+                    "edges": edges
+                })
+            frames_file = os.path.join(entry_dir, "frames.json")
+            with open(frames_file, "w", encoding="utf-8") as jf:
+                json.dump({"nodes": nodes, "frames": frames_json}, jf, indent=2)
+        else:
+            raise ValueError(f"unsupported file_format: {file_format!r}")
 
         # Save metadata JSON for the entry
         meta = {
@@ -190,7 +191,7 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
             "param_value": param_value,
             "frames": len(dyn_graph),
             "nodes_file": "nodes.txt",
-            "adj_prefix": "adj_frame_",
+            "format": fmt,
             "entry_dir": os.path.basename(entry_dir)
         }
         meta_file = os.path.join(entry_dir, f"entry_{i}_meta.json")
@@ -205,7 +206,7 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
             "entry_dir": os.path.basename(entry_dir)
         })
 
-    # write index CSV
+    # write index CSV (unchanged)
     index_file = os.path.join(out_dir, "index.csv")
     with open(index_file, "w", encoding="utf-8") as idxf:
         idxf.write("entry_id,param_name,param_value,frames,entry_dir\n")
@@ -214,24 +215,20 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False):
 
     return index_file
 
-def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=False):
+def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=False, file_format: str = "csv"):
     """
-    Save a single dynamic graph (list of networkx.Graph frames or a single Graph) as adjacency CSVs.
+    Save a single dynamic graph.
 
-    Produces directory: out_dir/entry_name/
-      - nodes.txt
-      - adj_frame_000.csv ...
-      - entry_meta.json
-
+    file_format: "csv" (default) -> adjacency CSV per frame (same as before)
+                 "json" -> single JSON file "frames.json" with nodes + per-frame edge lists.
     Returns the entry directory path.
     """
     os.makedirs(out_dir, exist_ok=True)
     # accept a single Graph as input is TODO
-    if dynamicGraph.DynamicGraph is not None:
+    if hasattr(dynamicGraph, "DynamicGraph") and dynamicGraph.DynamicGraph is not None:
         dyn_graph = dynamicGraph.DynamicGraph
     else:
-        print("saveDGmatrices: dynamicGraph has no DynamicGraph attribute or is None")
-        return
+        raise ValueError("saveDGmatrices: dynamicGraph has no DynamicGraph attribute or is None")
 
     entry_dirname = entry_name
     entry_dir = os.path.join(out_dir, entry_dirname)
@@ -264,27 +261,48 @@ def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=F
         for n in nodes:
             f.write(f"{n}\n")
 
-    # Save adjacency matrix per frame as CSV (0/1 integer entries)
-    for t, G in enumerate(dyn_graph):
-        A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
-        frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
-        np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+    fmt = file_format.lower()
+    if fmt == "csv":
+        # Save adjacency matrix per frame as CSV (0/1 integer entries)
+        for t, G in enumerate(dyn_graph):
+            A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+            frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
+            np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+        meta = {
+            "entry_name": entry_name,
+            "frames": len(dyn_graph),
+            "nodes_file": "nodes.txt",
+            "adj_prefix": "adj_frame_",
+            "format": fmt,
+            "entry_dir": os.path.basename(entry_dir)
+        }
+    elif fmt == "json":
+        frames_json = []
+        for t, G in enumerate(dyn_graph):
+            edges = [[str(u), str(v)] for (u, v) in G.edges()]
+            frames_json.append({"frame": t, "edges": edges})
+        frames_file = os.path.join(entry_dir, "frames.json")
+        with open(frames_file, "w", encoding="utf-8") as jf:
+            json.dump({"nodes": nodes, "frames": frames_json}, jf, indent=2)
+        meta = {
+            "entry_name": entry_name,
+            "frames": len(dyn_graph),
+            "nodes_file": "nodes.txt",
+            "frames_file": "frames.json",
+            "format": fmt,
+            "entry_dir": os.path.basename(entry_dir)
+        }
+    else:
+        raise ValueError(f"unsupported file_format: {file_format!r}")
 
     # Save metadata JSON for the entry
-    meta = {
-        "entry_name": entry_name,
-        "frames": len(dyn_graph),
-        "nodes_file": "nodes.txt",
-        "adj_prefix": "adj_frame_",
-        "entry_dir": os.path.basename(entry_dir)
-    }
     meta_file = os.path.join(entry_dir, f"{entry_name}_meta.json")
     with open(meta_file, "w", encoding="utf-8") as mf:
         json.dump(meta, mf, indent=2)
 
     return entry_dir
 
-def saveDGbatch(graphs, out_dir, names=None, overwrite=False):
+def saveDGbatch(graphs, out_dir, names=None, overwrite=False, file_format: str = "csv"):
     """
     Save a list of dynamic graphs (each a list of frames or single Graph) into out_dir.
     Produces per-entry directories and an index.csv summarizing saved entries.
@@ -303,7 +321,7 @@ def saveDGbatch(graphs, out_dir, names=None, overwrite=False):
             name = names[i]
         else:
             name = f"graph_{i}"
-        entry_dir = saveDGmatrices(dg, out_dir, entry_name=name, overwrite=overwrite)
+        entry_dir = saveDGmatrices(dg, out_dir, entry_name=name, overwrite=overwrite, file_format=file_format)
         # load metadata to get frames count
         meta_path = os.path.join(entry_dir, f"{name}_meta.json")
         frames = None

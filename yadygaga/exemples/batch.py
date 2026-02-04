@@ -6,6 +6,7 @@ from src.sourceGraphAugmenter import SourceGraphAugmenter
 from src.frameGenerator import FrameGenerator
 from src.timelineBlockGenerator import MPCTimelineBlockGenerator
 from src.dynaGraph import MPCDynamicGraph
+from src.toolbox import toolbox
 
 def main():
     G = nx.Graph()
@@ -22,6 +23,7 @@ def main():
     dyna = MPCDynamicGraph()
     set_ = dyna.generateUniqueSet(tl, mpc_frames, target_count=3, seed=42, max_enumeration=2000, force=True)
     print("Batch example - saved dynamics count (in-memory):", len(set_))
+    toolbox.saveDGbatch(set_, out_dir="./batchExample/", file_format="json")
     for i, dg in enumerate(set_):
         print(f" DG[{i}] length:", len(dg.DynamicGraph))
 
