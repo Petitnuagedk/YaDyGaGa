@@ -1,10 +1,10 @@
 # python3 -m exemple.dynamicCommunityExample
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'yadygaga'))
 
 import networkx as nx
-from src.dynaGraph import dynamicGraph
-from src.dyCoDeTa import DynaGraphCommuDetection, AnalyzerDynaCommu, visualizer
+from yadygaga.dynaGraph import dynamicGraph
+from yadygaga.dyCoDeTa import DynaGraphCommuDetection, AnalyzerDynaCommu, visualizer
 
 def main():
         viz = True

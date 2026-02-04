@@ -1,14 +1,14 @@
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'yadygaga'))
 
 import networkx as nx
 import numpy as np
 
-import src.toolbox as toolbox
-from src.sourceGraphAugmenter import SourceGraphAugmenter
-from src.frameGenerator import FrameGenerator
-from src.timelineBlockGenerator import MPCTimelineBlockGenerator
-from src.dynaGraph import MPCDynamicGraph
+import yadygaga.toolbox as toolbox
+from yadygaga.sourceGraphAugmenter import SourceGraphAugmenter
+from yadygaga.frameGenerator import FrameGenerator
+from yadygaga.timelineBlockGenerator import MPCTimelineBlockGenerator
+from yadygaga.dynaGraph import MPCDynamicGraph
 
 def main():
     G = nx.Graph()

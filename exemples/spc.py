@@ -1,14 +1,14 @@
 # python3 -m exemple.spc_example
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'yadygaga'))
 
 import networkx as nx
-from src.sourceGraphAugmenter import SourceGraphAugmenter
-from src.frameGenerator import FrameGenerator
-from src.timelineBlockGenerator import SPCTimelineBlockGenerator
-from src.dynaGraph import SPCDynamicGraph
-from src.propertiesChecker import PropertiesChecker
-from src.visualizer import Visualizer
+from yadygaga.sourceGraphAugmenter import SourceGraphAugmenter
+from yadygaga.frameGenerator import FrameGenerator
+from yadygaga.timelineBlockGenerator import SPCTimelineBlockGenerator
+from yadygaga.dynaGraph import SPCDynamicGraph
+from yadygaga.propertiesChecker import PropertiesChecker
+from yadygaga.visualizer import Visualizer
 
 def main():
     print("\n This is a demo case for YADYGAGA, a path constraint Dynamic graph generator\n")
