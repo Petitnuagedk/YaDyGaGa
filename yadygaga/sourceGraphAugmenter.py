@@ -1,6 +1,7 @@
 import networkx as nx
 import random
 
+
 class SourceGraphAugmenter:
 
     def __init__(self):
@@ -17,7 +18,7 @@ class SourceGraphAugmenter:
         try:
             baseline = nx.shortest_path_length(G, s, d)
         except (nx.NetworkXNoPath, nx.NodeNotFound):
-            baseline = float('inf')
+            baseline = float("inf")
 
         limited = G.copy()
         nodes = list(G.nodes())
@@ -33,13 +34,19 @@ class SourceGraphAugmenter:
                 try:
                     new_len = nx.shortest_path_length(H, s, d)
                 except nx.NetworkXNoPath:
-                    new_len = float('inf')
+                    new_len = float("inf")
                 # only allow the new edge if it does NOT reduce the s-d distance
                 if new_len >= baseline:
                     limited.add_edge(u, v)
         return limited
-    
-    def augmentBaseGraph(G: nx.Graph, group, seed: int = None, max_edges: int = None, verbose: bool = False) -> nx.Graph:
+
+    def augmentBaseGraph(
+        G: nx.Graph,
+        group,
+        seed: int = None,
+        max_edges: int = None,
+        verbose: bool = False,
+    ) -> nx.Graph:
         """
         Greedy, order-randomized augmentation that keeps original group baselines.
 
@@ -76,11 +83,11 @@ class SourceGraphAugmenter:
 
         # compute baseline distances on original G
         baseline = {}
-        for (u, v) in group_pairs:
+        for u, v in group_pairs:
             try:
                 baseline[(u, v)] = nx.shortest_path_length(G, u, v)
             except (nx.NetworkXNoPath, nx.NodeNotFound):
-                baseline[(u, v)] = float('inf')
+                baseline[(u, v)] = float("inf")
 
         limited = G.copy()
         nodes = list(G.nodes())
@@ -97,7 +104,7 @@ class SourceGraphAugmenter:
         rnd.shuffle(candidates)
 
         added = 0
-        for (u, v) in candidates:
+        for u, v in candidates:
             # stop if reached max_edges
             if max_edges is not None and added >= max_edges:
                 break
@@ -107,15 +114,15 @@ class SourceGraphAugmenter:
             H.add_edge(u, v)
 
             reduces_distance = False
-            for (x, y) in group_pairs:
+            for x, y in group_pairs:
                 # skip if x or y not present in H (treat as no reduction)
                 if x not in H or y not in H:
                     continue
                 try:
                     new_len = nx.shortest_path_length(H, x, y)
                 except nx.NetworkXNoPath:
-                    new_len = float('inf')
-                if new_len < baseline.get((x, y), float('inf')):
+                    new_len = float("inf")
+                if new_len < baseline.get((x, y), float("inf")):
                     reduces_distance = True
                     break
 
@@ -126,6 +133,8 @@ class SourceGraphAugmenter:
                     print(f"Accepted edge {(u, v)} (total added {added})")
             else:
                 if verbose:
-                    print(f"Rejected edge {(u, v)} (would reduce distance for some group pair)")
+                    print(
+                        f"Rejected edge {(u, v)} (would reduce distance for some group pair)"
+                    )
 
         return limited

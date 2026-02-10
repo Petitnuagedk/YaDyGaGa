@@ -1,5 +1,6 @@
 import networkx as nx
 
+
 class PropertiesChecker:
     """
     PropertiesChecker class to validate properties of graphs or frames.
@@ -38,7 +39,7 @@ class PropertiesChecker:
             "frames_with_path": frames_with_path,
             "total_frames": total_frames,
             "uptime_ratio": uptime_ratio,
-            "uptime_seconds": uptime_seconds
+            "uptime_seconds": uptime_seconds,
         }
 
     def path_stability(graphs, source, destination):
@@ -58,7 +59,7 @@ class PropertiesChecker:
             raise ValueError("graphs list is empty")
 
         frames_path_exists = 0
-        state = 0                # 1 -> up, 0 -> down
+        state = 0  # 1 -> up, 0 -> down
         stateChange = 0
 
         for g in graphs:
@@ -82,17 +83,17 @@ class PropertiesChecker:
                 pass
 
         stability_ratio = None
-        possible_changes = len(graphs)/2
+        possible_changes = len(graphs) / 2
         if frames_path_exists > 0:
-            #print(stateChange)
-            #print(len(graphs))
+            # print(stateChange)
+            # print(len(graphs))
             stability_ratio = 1 - (stateChange / possible_changes)
 
         return {
             "frames_path_exists": frames_path_exists,
             "Number_of_state_changes": stateChange,
             "Number_of_possible_changes": possible_changes,
-            "stability_ratio": stability_ratio
+            "stability_ratio": stability_ratio,
         }
 
     def path_length(graphs, source, destination):
@@ -133,10 +134,8 @@ class PropertiesChecker:
             "lengths": lengths,
             "frames_with_path": len(present),
             "total_frames": len(graphs),
-            **stats
+            **stats,
         }
-
-
 
     # def is_connected(self):
     #     """
@@ -182,8 +181,7 @@ class PropertiesChecker:
     #     :return: True if a path exists, False otherwise.
     #     """
     #     return nx.has_path(self.graph, source, destination)
-    
-    
+
     # def fullCheck(self, source, destination):
     #     """
     #     Perform a full check of the graph properties.

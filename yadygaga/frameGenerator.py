@@ -17,7 +17,15 @@ class FrameGenerator:
         self.path_up_frames = []
         self.path_down_frames = []
 
-    def generateSPCFrames(self, limited_G: nx.Graph, s: str, d: str, trials: int = 1000, p_edge: float = 0.5, pathPersistency: float = 0.0) -> None:
+    def generateSPCFrames(
+        self,
+        limited_G: nx.Graph,
+        s: str,
+        d: str,
+        trials: int = 1000,
+        p_edge: float = 0.5,
+        pathPersistency: float = 0.0,
+    ) -> None:
         """
         Generate `trials` random frames from `limited_G`. For SPC:
         - group frames where a path exists (s->d) by the actual node-sequence of that path.
@@ -50,18 +58,22 @@ class FrameGenerator:
 
         # store grouped up-frames as list of lists (stable ordering by stringified path)
         # ensure reproducible order
-        ordered_keys = sorted(path_map.keys(), key=lambda k: (len(k), tuple(map(str, k))))
+        ordered_keys = sorted(
+            path_map.keys(), key=lambda k: (len(k), tuple(map(str, k)))
+        )
         self.path_up_frames = [path_map[k] for k in ordered_keys]
         self.path_down_frames = down_list
         # keep auxiliary info
         self.path_up_keys = ordered_keys
 
-    def generateMPCFrames(self,
-                                  limited_G: nx.Graph,
-                                  pairs: List[Tuple[str, str]],
-                                  trials: int = 1000,
-                                  p_edge: float = 0.5,
-                                  seed: int = None) -> Dict:
+    def generateMPCFrames(
+        self,
+        limited_G: nx.Graph,
+        pairs: List[Tuple[str, str]],
+        trials: int = 1000,
+        p_edge: float = 0.5,
+        seed: int = None,
+    ) -> Dict:
         """
         Generate `trials` random frames from `limited_G` and for each frame evaluate
         reachability for each pair in `pairs`.
@@ -87,7 +99,7 @@ class FrameGenerator:
         for ti in range(trials):
             G = nx.Graph()
             G.add_nodes_from(limited_G.nodes())
-            for (u, v) in edges:
+            for u, v in edges:
                 if rnd.random() < p_edge:
                     G.add_edge(u, v)
             frames.append(G)
@@ -96,7 +108,7 @@ class FrameGenerator:
         idx_to_status = {}
         for idx, G in enumerate(frames):
             status = []
-            for (s, d) in pairs:
+            for s, d in pairs:
                 try:
                     # reachability via shortest_path
                     path = nx.shortest_path(G, source=s, target=d)
@@ -125,23 +137,25 @@ class FrameGenerator:
                 except (nx.NetworkXNoPath, nx.NodeNotFound):
                     idx_to_path[idx] = None
                     down_indices.append(idx)
-            per_pair.append({
-                'pair': (s, d),
-                'up_indices': up_indices,
-                'down_indices': down_indices,
-                'idx_to_path': idx_to_path,
-                'path_map': path_map
-            })
+            per_pair.append(
+                {
+                    "pair": (s, d),
+                    "up_indices": up_indices,
+                    "down_indices": down_indices,
+                    "idx_to_path": idx_to_path,
+                    "path_map": path_map,
+                }
+            )
 
         counts = {k: len(v) for k, v in cases.items()}
 
         return {
-            'frames': frames,
-            'pairs': pairs,
-            'cases': cases,
-            'counts': counts,
-            'per_pair': per_pair,
-            'idx_to_status': idx_to_status
+            "frames": frames,
+            "pairs": pairs,
+            "cases": cases,
+            "counts": counts,
+            "per_pair": per_pair,
+            "idx_to_status": idx_to_status,
         }
 
     def clear_frames(self) -> None:

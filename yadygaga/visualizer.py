@@ -1,6 +1,7 @@
 """
 Module for visualizing timelines.
 """
+
 import random
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -13,36 +14,47 @@ import os
 import json
 import glob
 
+
 class Visualizer:
-    def __init__(self, timeline = None):
+    def __init__(self, timeline=None):
         self.timeline = timeline
 
     def render_text(self):
         """Render the timeline as a text representation."""
-        return ' '.join(['UP' if state else 'DOWN' for state in self.timeline])
+        return " ".join(["UP" if state else "DOWN" for state in self.timeline])
 
     def render_graphically(self):
         """Render the timeline graphically (placeholder for actual implementation)."""
         import matplotlib.pyplot as plt
 
         plt.figure(figsize=(10, 2))
-        plt.plot(self.timeline, drawstyle='steps-post')
-        plt.yticks([0, 1], ['DOWN', 'UP'])
-        plt.title('Timeline Visualization')
-        plt.xlabel('Frames')
-        plt.ylabel('State')
+        plt.plot(self.timeline, drawstyle="steps-post")
+        plt.yticks([0, 1], ["DOWN", "UP"])
+        plt.title("Timeline Visualization")
+        plt.xlabel("Frames")
+        plt.ylabel("State")
         plt.grid(True)
         plt.show()
 
     def save_to_file(self, filename):
         """Save the timeline visualization to a file."""
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             f.write(self.render_text())
 
-    def visualize_dynamic_graph(self, graphs, interval=1000, loop=True, node_pos=None,
-                                node_size=300, node_color='skyblue', edge_color='gray',
-                                absent_node_color='lightgray', with_labels=True,
-                                target_pairs=None):
+    def visualize_dynamic_graph(
+        self,
+        graphs,
+        interval=1000,
+        loop=True,
+        node_pos=None,
+        node_size=300,
+        node_color="skyblue",
+        edge_color="gray",
+        absent_node_color="lightgray",
+        with_labels=True,
+        target_pairs=None,
+        layout="",
+    ):
         """
         Animated network with a bottom contact timeline.
         If `target_pairs` is provided (list of (src,dst) tuples), highlight the
@@ -69,22 +81,28 @@ class Visualizer:
 
         # Compute positions once unless provided (use circular layout)
         if node_pos is None:
-            pos = nx.circular_layout(union) if len(union) > 0 else {}
+            if layout == "random":
+                pos = nx.random_layout(union) if len(union) > 0 else {}
+            if layout == "spectral":
+                pos = nx.spectral_layout(union) if len(union) > 0 else {}
+            else:
+                pos = nx.circular_layout(union) if len(union) > 0 else {}
         else:
             pos = node_pos
 
         # prepare pair colors
         pair_colors = {}
         if target_pairs:
-            cmap = plt.cm.get_cmap('tab10')
+            cmap = plt.cm.get_cmap("tab10")
             for i, p in enumerate(target_pairs):
                 pair_colors[p] = cmap(i % cmap.N)
 
         # figure with two stacked subplots
-        fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(8, 8),
-                                                gridspec_kw={'height_ratios': [2, 1]})
+        fig, (ax_top, ax_bottom) = plt.subplots(
+            2, 1, figsize=(8, 8), gridspec_kw={"height_ratios": [2, 1]}
+        )
         ax_top.set_title("Network (animated)")
-        ax_top.axis('off')
+        ax_top.axis("off")
 
         # bottom timeline static setup
         ax_bottom.set_title("Connections over time (y = node index, x = frame)")
@@ -97,7 +115,7 @@ class Visualizer:
         else:
             ax_bottom.set_ylim(-0.5, 0.5)
         ax_bottom.set_xlim(-0.5, max(0, len(graphs) - 0.5))
-        ax_bottom.grid(True, axis='x', linestyle=':', alpha=0.4)
+        ax_bottom.grid(True, axis="x", linestyle=":", alpha=0.4)
 
         node_to_index = {n: i for i, n in enumerate(node_list)}
 
@@ -136,8 +154,14 @@ class Visualizer:
                     ]
                 codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
                 path = Path(verts, codes)
-                patch = PathPatch(path, edgecolor=edge_color, facecolor='none',
-                                  lw=1.2, alpha=0.9, zorder=1)
+                patch = PathPatch(
+                    path,
+                    edgecolor=edge_color,
+                    facecolor="none",
+                    lw=1.2,
+                    alpha=0.9,
+                    zorder=1,
+                )
                 ax_bottom.add_patch(patch)
 
             for n in connected_nodes:
@@ -150,8 +174,14 @@ class Visualizer:
 
         # animated soft red vertical bar (covers one-frame width)
         bar_width = 1.0
-        bar = Rectangle((-0.5, -0.5), width=bar_width, height=max(0, n_nodes),
-                        color='red', alpha=0.12, zorder=4)
+        bar = Rectangle(
+            (-0.5, -0.5),
+            width=bar_width,
+            height=max(0, n_nodes),
+            color="red",
+            alpha=0.12,
+            zorder=4,
+        )
         ax_bottom.add_patch(bar)
 
         # prepare legend handles for target pairs (on the right)
@@ -164,41 +194,59 @@ class Visualizer:
         # place a figure-level legend so it is not removed by per-frame axis.clear()
         fig_legend = None
         if legend_handles:
-            fig_legend = fig.legend(handles=legend_handles, title="Target pairs",
-                                    loc='center right', bbox_to_anchor=(0.98, 0.5))
+            fig_legend = fig.legend(
+                handles=legend_handles,
+                title="Target pairs",
+                loc="center right",
+                bbox_to_anchor=(0.98, 0.5),
+            )
             plt.subplots_adjust(right=0.78)
 
         # animation: update top subplot per-frame and move the red bar
         def update(frame_index):
             ax_top.clear()
-            ax_top.axis('off')
+            ax_top.axis("off")
             ax_top.set_title(f"Frame {frame_index + 1}/{len(graphs)}")
 
             G = graphs[frame_index]
 
             # Node colors: highlight nodes present in this frame, fade absent ones
             top_node_colors = [
-                node_color if (n in G.nodes()) else absent_node_color
-                for n in node_list
+                node_color if (n in G.nodes()) else absent_node_color for n in node_list
             ]
 
             if node_list:
-                nodes_coll = nx.draw_networkx_nodes(union, pos, nodelist=node_list,
-                                                    node_color=top_node_colors, node_size=node_size, ax=ax_top)
+                nodes_coll = nx.draw_networkx_nodes(
+                    union,
+                    pos,
+                    nodelist=node_list,
+                    node_color=top_node_colors,
+                    node_size=node_size,
+                    ax=ax_top,
+                )
                 try:
                     nodes_coll.set_zorder(1)
                 except Exception:
                     pass
             # draw base edges faintly (only edges present in the current frame)
             if G.number_of_edges() > 0:
-                edges_coll = nx.draw_networkx_edges(G, pos, edgelist=G.edges(), edge_color=edge_color, alpha=0.6, ax=ax_top)
+                edges_coll = nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    edgelist=G.edges(),
+                    edge_color=edge_color,
+                    alpha=0.6,
+                    ax=ax_top,
+                )
                 try:
                     edges_coll.set_zorder(1)
                 except Exception:
                     pass
 
             # For each target pair, compute shortest path if exists and collect path edges per-edge
-            edge_to_path_colors = {}  # key: (u,v) sorted, val: list of colors in order encountered
+            edge_to_path_colors = (
+                {}
+            )  # key: (u,v) sorted, val: list of colors in order encountered
             if target_pairs:
                 for p, col in pair_colors.items():
                     s, t = p
@@ -228,15 +276,24 @@ class Visualizer:
                         seg_end = tuple(p0 * (1 - b) + p1 * b)
                         segs.append((seg_start, seg_end))
                         seg_colors.append(c)
-                    lc = LineCollection(segs, colors=seg_colors, linewidths=3.0, zorder=3)
+                    lc = LineCollection(
+                        segs, colors=seg_colors, linewidths=3.0, zorder=3
+                    )
                     ax_top.add_collection(lc)
 
             # draw full labels to the right of nodes (not inside)
             if with_labels and node_list:
                 # draw labels with horizontal alignment left so they appear next to nodes
                 labels = {n: str(n) for n in node_list}
-                nx.draw_networkx_labels(union, pos, labels=labels, font_size=9,
-                                        horizontalalignment='left', verticalalignment='center', ax=ax_top)
+                nx.draw_networkx_labels(
+                    union,
+                    pos,
+                    labels=labels,
+                    font_size=9,
+                    horizontalalignment="left",
+                    verticalalignment="center",
+                    ax=ax_top,
+                )
 
             # legend is drawn at figure level (fig_legend) so do not create per-frame axes legend
 
@@ -246,27 +303,36 @@ class Visualizer:
 
             return []
 
-        ani = FuncAnimation(fig, update, frames=range(len(graphs)),
-                            interval=interval, repeat=loop, blit=False)
+        ani = FuncAnimation(
+            fig,
+            update,
+            frames=range(len(graphs)),
+            interval=interval,
+            repeat=loop,
+            blit=False,
+        )
 
         plt.tight_layout()
         plt.show()
         return ani
 
-    def animate_random_dynamics(self,
-                                dynamics,
-                                n: int = 5,
-                                interval: int = 1000,
-                                loop: bool = True,
-                                seed: int = None,
-                                figsize=(15, 5),
-                                node_size=100,
-                                node_color='skyblue',
-                                absent_node_color='lightgray',
-                                edge_color='gray',
-                                with_labels=True,
-                                target_pairs=None,
-                                titles=None):
+    def animate_random_dynamics(
+        self,
+        dynamics,
+        n: int = 5,
+        interval: int = 1000,
+        loop: bool = True,
+        seed: int = None,
+        figsize=(15, 5),
+        node_size=100,
+        node_color="skyblue",
+        absent_node_color="lightgray",
+        edge_color="gray",
+        with_labels=True,
+        target_pairs=None,
+        titles=None,
+        layout="",
+    ):
         """
         Pick up to `n` dynamics from `dynamics` and animate them side-by-side.
         If `target_pairs` is provided, highlight shortest paths for any pair that
@@ -275,7 +341,9 @@ class Visualizer:
         """
         if seed is not None:
             random.seed(seed)
-        print(f"Animating up to {n} random dynamics from pool of {len(dynamics)} dynamics.")
+        print(
+            f"Animating up to {n} random dynamics from pool of {len(dynamics)} dynamics."
+        )
         # normalize dynamics into list of list-of-graphs
         pool = []
         for d in dynamics:
@@ -331,7 +399,7 @@ class Visualizer:
         # pair colors global (so same across columns)
         pair_colors = {}
         if target_pairs:
-            cmap = plt.cm.get_cmap('tab10')
+            cmap = plt.cm.get_cmap("tab10")
             for i, p in enumerate(target_pairs):
                 pair_colors[p] = cmap(i % cmap.N)
 
@@ -345,7 +413,12 @@ class Visualizer:
             for f in frames:
                 union.add_nodes_from(f.nodes())
                 union.add_edges_from(f.edges())
-            pos = nx.circular_layout(union) if len(union) > 0 else {}
+                if layout == "random":
+                    pos = nx.random_layout(union) if len(union) > 0 else {}
+                if layout == "spectral":
+                    pos = nx.spectral_layout(union) if len(union) > 0 else {}
+                else:
+                    pos = nx.circular_layout(union) if len(union) > 0 else {}
             node_list = list(union.nodes())
             node_to_index = {n: i for i, n in enumerate(node_list)}
             patches = []
@@ -379,32 +452,43 @@ class Visualizer:
                         ]
                     codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
                     path = Path(verts, codes)
-                    patches.append(PathPatch(path, edgecolor=edge_color, facecolor='none',
-                                             lw=1.2, alpha=0.9, zorder=1))
+                    patches.append(
+                        PathPatch(
+                            path,
+                            edgecolor=edge_color,
+                            facecolor="none",
+                            lw=1.2,
+                            alpha=0.9,
+                            zorder=1,
+                        )
+                    )
                 for n in connected_nodes:
                     if n in node_to_index:
                         scatter_x.append(f_idx)
                         scatter_y.append(node_to_index[n])
 
-            dyn_info.append({
-                "frames": frames,
-                "union": union,
-                "pos": pos,
-                "node_list": node_list,
-                "node_to_index": node_to_index,
-                "length": len(frames),
-                "patches": patches,
-                "scatter_x": scatter_x,
-                "scatter_y": scatter_y,
-                "n_nodes": len(node_list),
-                "bar": None,
-            })
+            dyn_info.append(
+                {
+                    "frames": frames,
+                    "union": union,
+                    "pos": pos,
+                    "node_list": node_list,
+                    "node_to_index": node_to_index,
+                    "length": len(frames),
+                    "patches": patches,
+                    "scatter_x": scatter_x,
+                    "scatter_y": scatter_y,
+                    "n_nodes": len(node_list),
+                    "bar": None,
+                }
+            )
 
         max_frames = max(info["length"] for info in dyn_info)
 
         # create 2 x count axes: top row animated networks, bottom row static timelines
-        fig, axes = plt.subplots(2, count, figsize=figsize,
-                                 gridspec_kw={'height_ratios': [2, 1]})
+        fig, axes = plt.subplots(
+            2, count, figsize=figsize, gridspec_kw={"height_ratios": [2, 1]}
+        )
         if count == 1:
             top_axes = [axes[0]]
             bottom_axes = [axes[1]]
@@ -419,8 +503,10 @@ class Visualizer:
                 lbl = f"{p[0]} -> {p[1]}"
                 legend_handles.append(Line2D([0], [0], color=col, lw=3, label=lbl))
 
-        for i, (ax_top, ax_bottom, info) in enumerate(zip(top_axes, bottom_axes, dyn_info)):
-            ax_top.axis('off')
+        for i, (ax_top, ax_bottom, info) in enumerate(
+            zip(top_axes, bottom_axes, dyn_info)
+        ):
+            ax_top.axis("off")
             n_nodes = info["n_nodes"]
             node_list = info["node_list"]
             ax_bottom.set_title("Connections over time")
@@ -433,14 +519,22 @@ class Visualizer:
             else:
                 ax_bottom.set_ylim(-0.5, 0.5)
             ax_bottom.set_xlim(-0.5, max(0, info["length"] - 0.5))
-            ax_bottom.grid(True, axis='x', linestyle=':', alpha=0.4)
+            ax_bottom.grid(True, axis="x", linestyle=":", alpha=0.4)
 
             for p in info["patches"]:
                 ax_bottom.add_patch(p)
             if info["scatter_x"]:
-                ax_bottom.scatter(info["scatter_x"], info["scatter_y"], c=node_color, s=30, zorder=3)
-            bar = Rectangle((-0.5, -0.5), width=1.0, height=max(0, n_nodes),
-                            color='red', alpha=0.12, zorder=4)
+                ax_bottom.scatter(
+                    info["scatter_x"], info["scatter_y"], c=node_color, s=30, zorder=3
+                )
+            bar = Rectangle(
+                (-0.5, -0.5),
+                width=1.0,
+                height=max(0, n_nodes),
+                color="red",
+                alpha=0.12,
+                zorder=4,
+            )
             ax_bottom.add_patch(bar)
             info["bar"] = bar
 
@@ -449,13 +543,18 @@ class Visualizer:
                 ax_top.set_title(str(titles[i]))
             # add legend on top axis if target pairs provided
             if legend_handles:
-                ax_top.legend(handles=legend_handles, title="Target pairs", bbox_to_anchor=(1.02, 1), loc='upper left')
+                ax_top.legend(
+                    handles=legend_handles,
+                    title="Target pairs",
+                    bbox_to_anchor=(1.02, 1),
+                    loc="upper left",
+                )
 
         # animation: update top row per-frame and move each bottom bar
         def update(frame_index):
             for ax_top, info in zip(top_axes, dyn_info):
                 ax_top.clear()
-                ax_top.axis('off')
+                ax_top.axis("off")
                 fi = frame_index % info["length"]
                 G = info["frames"][fi]
                 pos = info["pos"]
@@ -463,18 +562,29 @@ class Visualizer:
 
                 ax_top.set_title(f"Dyn frame {fi}")
 
-                node_colors = [node_color if (n in G.nodes()) else absent_node_color for n in node_list]
+                node_colors = [
+                    node_color if (n in G.nodes()) else absent_node_color
+                    for n in node_list
+                ]
 
                 if node_list:
-                    nodes_coll = nx.draw_networkx_nodes(info["union"], pos, nodelist=node_list,
-                                                        node_color=node_colors, node_size=node_size, ax=ax_top)
+                    nodes_coll = nx.draw_networkx_nodes(
+                        info["union"],
+                        pos,
+                        nodelist=node_list,
+                        node_color=node_colors,
+                        node_size=node_size,
+                        ax=ax_top,
+                    )
                     try:
                         nodes_coll.set_zorder(1)
                     except Exception:
                         pass
                 # draw only edges present in the current frame
                 if G.number_of_edges() > 0:
-                    edges_coll = nx.draw_networkx_edges(G, pos, edgelist=G.edges(), edge_color=edge_color, ax=ax_top)
+                    edges_coll = nx.draw_networkx_edges(
+                        G, pos, edgelist=G.edges(), edge_color=edge_color, ax=ax_top
+                    )
                     try:
                         edges_coll.set_zorder(1)
                     except Exception:
@@ -490,13 +600,27 @@ class Visualizer:
                             try:
                                 path_nodes = nx.shortest_path(G, source=s, target=t)
                                 path_edges = list(zip(path_nodes[:-1], path_nodes[1:]))
-                                path_edges_coll = nx.draw_networkx_edges(G, pos, edgelist=path_edges, edge_color=[col], width=3.0, ax=ax_top)
+                                path_edges_coll = nx.draw_networkx_edges(
+                                    G,
+                                    pos,
+                                    edgelist=path_edges,
+                                    edge_color=[col],
+                                    width=3.0,
+                                    ax=ax_top,
+                                )
                                 try:
                                     path_edges_coll.set_zorder(3)
                                 except Exception:
                                     pass
-                                path_nodes_coll = nx.draw_networkx_nodes(G, pos, nodelist=path_nodes, node_color=[col]*len(path_nodes),
-                                                                         node_size=int(node_size*1.1), ax=ax_top, edgecolors='k')
+                                path_nodes_coll = nx.draw_networkx_nodes(
+                                    G,
+                                    pos,
+                                    nodelist=path_nodes,
+                                    node_color=[col] * len(path_nodes),
+                                    node_size=int(node_size * 1.1),
+                                    ax=ax_top,
+                                    edgecolors="k",
+                                )
                                 try:
                                     path_nodes_coll.set_zorder(4)
                                 except Exception:
@@ -509,13 +633,23 @@ class Visualizer:
 
             return []
 
-        ani = FuncAnimation(fig, update, frames=range(max_frames),
-                            interval=interval, repeat=loop)
+        ani = FuncAnimation(
+            fig, update, frames=range(max_frames), interval=interval, repeat=loop
+        )
         plt.tight_layout()
         plt.show()
         return ani
 
-    def plotLoadedData(self, loaded, n_display=None, interval=800, loop=True, seed=1, target_pairs=None):
+    def plotLoadedData(
+        self,
+        loaded,
+        n_display=None,
+        interval=800,
+        loop=True,
+        seed=1,
+        target_pairs=None,
+        layout="",
+    ):
         """
         Plot content returned by load_from_directory(), a Python object (list/dict)
         or a JSON-compatible input (JSON string or path to a .json file or saved directory).
@@ -525,6 +659,7 @@ class Visualizer:
         - If `loaded` is a JSON string/bytes -> parse JSON
         - Otherwise falls back to existing behavior for Python list/dict produced by API.
         """
+
         def _resolve_input(x):
             # directory path -> load directory
             if isinstance(x, str):
@@ -542,7 +677,9 @@ class Visualizer:
                 try:
                     return json.loads(x)
                 except Exception:
-                    raise ValueError("String `loaded` is neither a directory, a JSON file path nor a JSON string")
+                    raise ValueError(
+                        "String `loaded` is neither a directory, a JSON file path nor a JSON string"
+                    )
             if isinstance(x, (bytes, bytearray)):
                 try:
                     return json.loads(x.decode("utf-8"))
@@ -557,30 +694,54 @@ class Visualizer:
             raise ValueError(f"Unable to interpret `loaded` input: {e}")
 
         # handle raw sweep results (list of dicts)
-        if isinstance(loaded, list) and all(isinstance(e, dict) and "dynamic_graph" in e for e in loaded):
+        if isinstance(loaded, list) and all(
+            isinstance(e, dict) and "dynamic_graph" in e for e in loaded
+        ):
             results = loaded
             if not results:
                 raise RuntimeError("Empty sweep results")
             # extract dynamics and titles
             dynamics = [r["dynamic_graph"] for r in results]
-            titles = [f"{r.get('param_name','param')}={r.get('param_value','')}" for r in results]
+            titles = [
+                f"{r.get('param_name','param')}={r.get('param_value','')}"
+                for r in results
+            ]
             if n_display is None:
                 n_display = min(6, len(dynamics))
             chosen = dynamics[:n_display]
             chosen_titles = titles[:n_display]
             v = Visualizer([])  # use animate_random_dynamics to render multiple columns
-            return v.animate_random_dynamics(chosen, n=len(chosen), interval=interval, loop=loop, seed=seed, titles=chosen_titles, target_pairs=target_pairs)
+            return v.animate_random_dynamics(
+                chosen,
+                n=len(chosen),
+                interval=interval,
+                loop=loop,
+                seed=seed,
+                titles=chosen_titles,
+                target_pairs=target_pairs,
+                layout=layout,
+            )
 
         # loaded dict returned by load_from_directory()
         if isinstance(loaded, dict) and loaded.get("type") == "single":
             dg = loaded["dynamic_graph"]
             v = Visualizer([])  # instance used to access method
-            return v.visualize_dynamic_graph(dg, interval=interval, loop=loop, target_pairs=target_pairs)
+            return v.visualize_dynamic_graph(
+                dg,
+                interval=interval,
+                loop=loop,
+                target_pairs=target_pairs,
+                layout=layout,
+            )
 
         if isinstance(loaded, dict) and loaded.get("type") == "batch":
             entries = loaded["entries"]
             graphs = [e["dynamic_graph"] for e in entries if e.get("dynamic_graph")]
-            titles = [f"{e.get('param_name','') }={e.get('param_value','')}" for e in entries if e.get("dynamic_graph")]
+            titles = [
+                f"{e.get('param_name','') }={e.get('param_value','')}"
+                for e in entries
+                if e.get("dynamic_graph")
+            ]
             if not graphs:
                 raise RuntimeError("No dynamic graphs found in batch to plot.")
             # limit how many to show
@@ -589,9 +750,19 @@ class Visualizer:
             chosen = graphs[:n_display]
             chosen_titles = titles[:n_display]
             v = Visualizer([])  # use animate_random_dynamics to render multiple columns
-            return v.animate_random_dynamics(chosen, n=len(chosen), interval=interval, loop=loop, seed=seed, titles=chosen_titles, target_pairs=target_pairs)
+            return v.animate_random_dynamics(
+                chosen,
+                n=len(chosen),
+                interval=interval,
+                loop=loop,
+                seed=seed,
+                titles=chosen_titles,
+                target_pairs=target_pairs,
+                layout=layout,
+            )
 
         raise ValueError("Unknown loaded data type or unsupported format")
+
 
 def _load_dynamic_graph_from_dir(entry_dir):
     """
@@ -617,6 +788,7 @@ def _load_dynamic_graph_from_dir(entry_dir):
         graphs.append(G)
     return graphs
 
+
 def load_from_directory(path):
     """
     Inspect `path` and load dynamic graph(s).
@@ -637,8 +809,11 @@ def load_from_directory(path):
     index_file = os.path.join(path, "index.csv")
     if not os.path.exists(index_file):
         # try to find single entry subdirectories automatically
-        subdirs = [os.path.join(path, d) for d in os.listdir(path)
-                   if os.path.isdir(os.path.join(path, d))]
+        subdirs = [
+            os.path.join(path, d)
+            for d in os.listdir(path)
+            if os.path.isdir(os.path.join(path, d))
+        ]
         results = []
         for sd in subdirs:
             try:
@@ -666,7 +841,7 @@ def load_from_directory(path):
                 "param_name": row.get("param_name"),
                 "param_value": row.get("param_value"),
                 "frames": int(row.get("frames")) if row.get("frames") else None,
-                "dynamic_graph": dg
+                "dynamic_graph": dg,
             }
             entries.append(entry)
     return {"type": "batch", "entries": entries}

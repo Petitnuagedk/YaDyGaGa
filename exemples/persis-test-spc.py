@@ -18,32 +18,32 @@ def main():
     )
     print("\n The demonstration will be made on the following graph:\n")
     print("         A         ")
-    print("          \        ")
-    print("       B---C       ")
+    print("        / \        ")
+    print("       B   C       ")
     print("       |   |       ")
     print("       D   E       ")
-    print("          /        ")
+    print("        \ /        ")
     print("         F         \n")
     print("In this demo case, the constraint path is bewteen the pair A-F")
     viz = True
+    augment = False
     G = nx.Graph()
-    G.add_edges_from([("A", "C"), ("B", "C"), ("C", "E"), ("D", "B"), ("E", "F")])
+    G.add_edges_from(
+        [("A", "C"), ("B", "A"), ("C", "E"), ("D", "B"), ("E", "F"), ("D", "F")]
+    )
 
     pair = [("A", "F")]
-    limited = SourceGraphAugmenter.augmentBaseGraph(G, pair, seed=1, verbose=False)
+    limited = G
+    if augment == True:
+        limited = SourceGraphAugmenter.augmentBaseGraph(G, pair, seed=1, verbose=False)
 
     fg = FrameGenerator()
-    fg.generateSPCFrames(limited, "A", "D", trials=500, p_edge=0.5, pathPersistency=0.9)
+    fg.generateSPCFrames(limited, "A", "F", trials=500, p_edge=0.5, pathPersistency=1)
     up = fg.path_up_frames
     down = fg.path_down_frames
 
     timeline_gen = SPCTimelineBlockGenerator(
-        frames=40,
-        path_life=0.4,
-        stability=0.8,
-        seed=42,
-        mode="blocks",
-        pathPersistency=0.9,
+        frames=40, path_life=1, stability=1, seed=42, mode="blocks", pathPersistency=0.5
     )
     timeLine = timeline_gen.generate_blocks()
 
@@ -65,10 +65,10 @@ def main():
     if viz == True:
         timeline_visualizer = Visualizer(timeLine)
         timeline_visualizer.visualize_dynamic_graph(
-            DynaGA.DynamicGraph, target_pairs=pair
+            DynaGA.DynamicGraph, target_pairs=pair, layout="spectral"
         )
         timeline_visualizer.animate_random_dynamics(
-            DynaGAset, n=2, interval=1000, target_pairs=pair
+            DynaGAset, n=2, interval=1000, target_pairs=pair, layout="spectral"
         )
 
 

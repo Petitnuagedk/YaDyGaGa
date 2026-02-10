@@ -6,7 +6,10 @@ import glob
 import csv
 import networkx as nx
 
-def timelineFeasibleParams(frames: int, path_life: float = None, stability: float = None):
+
+def timelineFeasibleParams(
+    frames: int, path_life: float = None, stability: float = None
+):
     """
     Given number of frames `frames` and either `path_life` (alpha in [0,1]) or
     `stability` (s in [0,1]), return feasible values/ranges for the other parameter.
@@ -41,14 +44,20 @@ def timelineFeasibleParams(frames: int, path_life: float = None, stability: floa
         if path_life is not None:
             k = math.ceil(path_life * l)
             # stability undefined (no adjacencies) -> treat as 1.0
-            return {'frames': l, 'given': ('path_life', path_life),
-                    'feasible_stability': (1.0, 1.0),
-                    'k': k}
+            return {
+                "frames": l,
+                "given": ("path_life", path_life),
+                "feasible_stability": (1.0, 1.0),
+                "k": k,
+            }
         else:
             # stability given -> only path_life options are 0 or 1 depending on desired k
-            return {'frames': l, 'given': ('stability', stability),
-                    'feasible_path_life': (0.0, 1.0),
-                    'possible_k': [0, 1]}
+            return {
+                "frames": l,
+                "given": ("stability", stability),
+                "feasible_path_life": (0.0, 1.0),
+                "possible_k": [0, 1],
+            }
 
     if path_life is not None:
         if not (0.0 <= path_life <= 1.0):
@@ -69,11 +78,11 @@ def timelineFeasibleParams(frames: int, path_life: float = None, stability: floa
         s_max = max(0.0, min(1.0, s_max))
 
         return {
-            'frames': l,
-            'given': ('path_life', path_life),
-            'k': k,
-            'feasible_stability': (s_min, s_max),
-            'note': f"For k={k} frames with path present, stability must be in [{s_min:.3f}, {s_max:.3f}]"
+            "frames": l,
+            "given": ("path_life", path_life),
+            "k": k,
+            "feasible_stability": (s_min, s_max),
+            "note": f"For k={k} frames with path present, stability must be in [{s_min:.3f}, {s_max:.3f}]",
         }
 
     else:
@@ -95,24 +104,27 @@ def timelineFeasibleParams(frames: int, path_life: float = None, stability: floa
 
         if not feasible_ks:
             return {
-                'frames': l,
-                'given': ('stability', stability),
-                'feasible_path_life': None,
-                'possible_k': [],
-                'note': "No feasible path_life (k) exists for the provided stability"
+                "frames": l,
+                "given": ("stability", stability),
+                "feasible_path_life": None,
+                "possible_k": [],
+                "note": "No feasible path_life (k) exists for the provided stability",
             }
 
         alpha_min = min(feasible_ks) / l
         alpha_max = max(feasible_ks) / l
         return {
-            'frames': l,
-            'given': ('stability', stability),
-            'possible_k': feasible_ks,
-            'feasible_path_life': (alpha_min, alpha_max),
-            'note': f"For stability={stability}, path_life (alpha) must be in [{alpha_min:.3f}, {alpha_max:.3f}]"
+            "frames": l,
+            "given": ("stability", stability),
+            "possible_k": feasible_ks,
+            "feasible_path_life": (alpha_min, alpha_max),
+            "note": f"For stability={stability}, path_life (alpha) must be in [{alpha_min:.3f}, {alpha_max:.3f}]",
         }
 
-def saveSweepMatrices(sweep_results, out_dir, overwrite=False, file_format: str = "csv"):
+
+def saveSweepMatrices(
+    sweep_results, out_dir, overwrite=False, file_format: str = "csv"
+):
     """
     Persist sweep results to disk.
 
@@ -125,9 +137,9 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False, file_format: str 
     index_rows = []
     fmt = file_format.lower()
     for i, entry in enumerate(sweep_results):
-        param_name = entry.get('param_name', 'param')
-        param_value = entry.get('param_value', entry.get(param_name, 'nan'))
-        dyn_graph = entry.get('dynamic_graph')
+        param_name = entry.get("param_name", "param")
+        param_value = entry.get("param_value", entry.get(param_name, "nan"))
+        dyn_graph = entry.get("dynamic_graph")
         if dyn_graph is None:
             # skip malformed entry
             continue
@@ -175,10 +187,7 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False, file_format: str 
             frames_json = []
             for t, G in enumerate(dyn_graph):
                 edges = [[str(u), str(v)] for (u, v) in G.edges()]
-                frames_json.append({
-                    "frame": t,
-                    "edges": edges
-                })
+                frames_json.append({"frame": t, "edges": edges})
             frames_file = os.path.join(entry_dir, "frames.json")
             with open(frames_file, "w", encoding="utf-8") as jf:
                 json.dump({"nodes": nodes, "frames": frames_json}, jf, indent=2)
@@ -192,30 +201,41 @@ def saveSweepMatrices(sweep_results, out_dir, overwrite=False, file_format: str 
             "frames": len(dyn_graph),
             "nodes_file": "nodes.txt",
             "format": fmt,
-            "entry_dir": os.path.basename(entry_dir)
+            "entry_dir": os.path.basename(entry_dir),
         }
         meta_file = os.path.join(entry_dir, f"entry_{i}_meta.json")
         with open(meta_file, "w", encoding="utf-8") as mf:
             json.dump(meta, mf, indent=2)
 
-        index_rows.append({
-            "entry_id": i,
-            "param_name": param_name,
-            "param_value": param_value,
-            "frames": len(dyn_graph),
-            "entry_dir": os.path.basename(entry_dir)
-        })
+        index_rows.append(
+            {
+                "entry_id": i,
+                "param_name": param_name,
+                "param_value": param_value,
+                "frames": len(dyn_graph),
+                "entry_dir": os.path.basename(entry_dir),
+            }
+        )
 
     # write index CSV (unchanged)
     index_file = os.path.join(out_dir, "index.csv")
     with open(index_file, "w", encoding="utf-8") as idxf:
         idxf.write("entry_id,param_name,param_value,frames,entry_dir\n")
         for r in index_rows:
-            idxf.write(f"{r['entry_id']},{r['param_name']},{r['param_value']},{r['frames']},{r['entry_dir']}\n")
+            idxf.write(
+                f"{r['entry_id']},{r['param_name']},{r['param_value']},{r['frames']},{r['entry_dir']}\n"
+            )
 
     return index_file
 
-def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=False, file_format: str = "csv"):
+
+def saveDGmatrices(
+    dynamicGraph,
+    out_dir,
+    entry_name="dynamicGraph",
+    overwrite=False,
+    file_format: str = "csv",
+):
     """
     Save a single dynamic graph.
 
@@ -228,7 +248,9 @@ def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=F
     if hasattr(dynamicGraph, "DynamicGraph") and dynamicGraph.DynamicGraph is not None:
         dyn_graph = dynamicGraph.DynamicGraph
     else:
-        raise ValueError("saveDGmatrices: dynamicGraph has no DynamicGraph attribute or is None")
+        raise ValueError(
+            "saveDGmatrices: dynamicGraph has no DynamicGraph attribute or is None"
+        )
 
     entry_dirname = entry_name
     entry_dir = os.path.join(out_dir, entry_dirname)
@@ -274,7 +296,7 @@ def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=F
             "nodes_file": "nodes.txt",
             "adj_prefix": "adj_frame_",
             "format": fmt,
-            "entry_dir": os.path.basename(entry_dir)
+            "entry_dir": os.path.basename(entry_dir),
         }
     elif fmt == "json":
         frames_json = []
@@ -290,7 +312,7 @@ def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=F
             "nodes_file": "nodes.txt",
             "frames_file": "frames.json",
             "format": fmt,
-            "entry_dir": os.path.basename(entry_dir)
+            "entry_dir": os.path.basename(entry_dir),
         }
     else:
         raise ValueError(f"unsupported file_format: {file_format!r}")
@@ -301,6 +323,7 @@ def saveDGmatrices(dynamicGraph, out_dir, entry_name="dynamicGraph", overwrite=F
         json.dump(meta, mf, indent=2)
 
     return entry_dir
+
 
 def saveDGbatch(graphs, out_dir, names=None, overwrite=False, file_format: str = "csv"):
     """
@@ -321,7 +344,9 @@ def saveDGbatch(graphs, out_dir, names=None, overwrite=False, file_format: str =
             name = names[i]
         else:
             name = f"graph_{i}"
-        entry_dir = saveDGmatrices(dg, out_dir, entry_name=name, overwrite=overwrite, file_format=file_format)
+        entry_dir = saveDGmatrices(
+            dg, out_dir, entry_name=name, overwrite=overwrite, file_format=file_format
+        )
         # load metadata to get frames count
         meta_path = os.path.join(entry_dir, f"{name}_meta.json")
         frames = None
@@ -332,20 +357,25 @@ def saveDGbatch(graphs, out_dir, names=None, overwrite=False, file_format: str =
                     frames = meta.get("frames", None)
             except Exception:
                 frames = None
-        index_rows.append({
-            "entry_id": i,
-            "entry_name": name,
-            "frames": frames if frames is not None else "",
-            "entry_dir": os.path.basename(entry_dir)
-        })
+        index_rows.append(
+            {
+                "entry_id": i,
+                "entry_name": name,
+                "frames": frames if frames is not None else "",
+                "entry_dir": os.path.basename(entry_dir),
+            }
+        )
 
     index_file = os.path.join(out_dir, "index.csv")
     with open(index_file, "w", encoding="utf-8") as idxf:
         idxf.write("entry_id,entry_name,frames,entry_dir\n")
         for r in index_rows:
-            idxf.write(f"{r['entry_id']},{r['entry_name']},{r['frames']},{r['entry_dir']}\n")
+            idxf.write(
+                f"{r['entry_id']},{r['entry_name']},{r['frames']},{r['entry_dir']}\n"
+            )
 
     return index_file
+
 
 def loadDGfromDir(entry_dir):
     """
@@ -372,6 +402,7 @@ def loadDGfromDir(entry_dir):
         graphs.append(G)
     return graphs
 
+
 def loadFromDirectory(path):
     """
     Inspect `path` and load dynamic graph(s).
@@ -391,8 +422,11 @@ def loadFromDirectory(path):
     index_file = os.path.join(path, "index.csv")
     if not os.path.exists(index_file):
         # try to find single entry subdirectories automatically
-        subdirs = [os.path.join(path, d) for d in os.listdir(path)
-                   if os.path.isdir(os.path.join(path, d))]
+        subdirs = [
+            os.path.join(path, d)
+            for d in os.listdir(path)
+            if os.path.isdir(os.path.join(path, d))
+        ]
         results = []
         for sd in subdirs:
             try:
@@ -420,10 +454,11 @@ def loadFromDirectory(path):
                 "param_name": row.get("param_name"),
                 "param_value": row.get("param_value"),
                 "frames": int(row.get("frames")) if row.get("frames") else None,
-                "dynamic_graph": dg
+                "dynamic_graph": dg,
             }
             entries.append(entry)
     return {"type": "batch", "entries": entries}
+
 
 # def sweep_mpc_generate(dynamic_graph_base, pairs, frames: int, path_life: float = None, stability: float = None,
 #                        step: float = 0.1, mode: str = "indep", trials: int = 1000, p_edge: float = 0.5, seed: int = 42):

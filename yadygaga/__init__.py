@@ -10,7 +10,11 @@ from .timelineBlockGenerator import SPCTimelineBlockGenerator, MPCTimelineBlockG
 from .dynaGraph import dynamicGraph, SPCDynamicGraph, MPCDynamicGraph
 from .visualizer import Visualizer
 from .sourceGraphAugmenter import SourceGraphAugmenter
-from .dyCoDeTa import DynaGraphCommuDetection, AnalyzerDynaCommu, visualizer as dyco_visualizer
+from .dyCoDeTa import (
+    DynaGraphCommuDetection,
+    AnalyzerDynaCommu,
+    visualizer as dyco_visualizer,
+)
 
 # Public API
 __all__ = [

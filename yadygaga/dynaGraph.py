@@ -6,19 +6,24 @@ import math
 
 # local toggle: set to True to enable prints/logging in this file, False to silence
 DG_LOG = False
+
+
 def _log(*args, **kwargs):
     if DG_LOG:
         print(*args, **kwargs)
+
 
 class dynamicGraph:
     """
     Base class for DynamicGraph structures.
     """
+
     def __init__(self):
         self.DynamicGraph = []
-    
+
     def appendGraph(self, graph: nx.Graph):
         self.DynamicGraph.append(graph)
+
 
 class SPCDynamicGraph:
     """
@@ -27,7 +32,7 @@ class SPCDynamicGraph:
 
     def __init__(self):
         self.DynamicGraph = []
-    
+
     def buildDynaGraph(self, timeline, path_up, path_down):
         """
         Given a timeline (legacy: List[bool] OR new: dict {'timeline':..., 'path_ids':...})
@@ -45,15 +50,19 @@ class SPCDynamicGraph:
 
         # accept timeline as either dict or list
         if isinstance(timeline, dict):
-            tl = timeline.get('timeline', [])
-            path_ids = timeline.get('path_ids', [None] * len(tl))
+            tl = timeline.get("timeline", [])
+            path_ids = timeline.get("path_ids", [None] * len(tl))
         else:
             tl = list(timeline)
             path_ids = [None] * len(tl)
 
         # detect if path_up is grouped (list of lists) or flat (list of graphs)
         grouped_up = False
-        if path_up and isinstance(path_up, list) and any(isinstance(x, list) for x in path_up):
+        if (
+            path_up
+            and isinstance(path_up, list)
+            and any(isinstance(x, list) for x in path_up)
+        ):
             grouped_up = True
 
         # prepare pools
@@ -160,13 +169,15 @@ class SPCDynamicGraph:
         """
         return tuple(self._frame_fingerprint(g) for g in frames)
 
-    def generateUniqueSet(self,
-                            timeline: List[bool],
-                            path_up: List[nx.Graph],
-                            path_down: List[nx.Graph],
-                            target_count: int,
-                            seed: int = None,
-                            max_enumeration: int = 1000000) -> List['SPCDynamicGraph']:
+    def generateUniqueSet(
+        self,
+        timeline: List[bool],
+        path_up: List[nx.Graph],
+        path_down: List[nx.Graph],
+        target_count: int,
+        seed: int = None,
+        max_enumeration: int = 1000000,
+    ) -> List["SPCDynamicGraph"]:
         """
         Generate up to `target_count` distinct DynamicGraph instances following `timeline`.
         Supports the new map-style timeline (dict with 'timeline' and 'path_ids') and
@@ -190,8 +201,8 @@ class SPCDynamicGraph:
 
         # accept timeline as either dict or list (same as buildDynaGraph)
         if isinstance(timeline, dict):
-            tl = timeline.get('timeline', [])
-            path_ids = timeline.get('path_ids', [None] * len(tl))
+            tl = timeline.get("timeline", [])
+            path_ids = timeline.get("path_ids", [None] * len(tl))
         else:
             tl = list(timeline)
             path_ids = [None] * len(tl)
@@ -200,7 +211,11 @@ class SPCDynamicGraph:
 
         # detect grouped_up as in buildDynaGraph
         grouped_up = False
-        if path_up and isinstance(path_up, list) and any(isinstance(x, list) for x in path_up):
+        if (
+            path_up
+            and isinstance(path_up, list)
+            and any(isinstance(x, list) for x in path_up)
+        ):
             grouped_up = True
 
         # prepare down pool and flat_up
@@ -219,7 +234,7 @@ class SPCDynamicGraph:
             dg = SPCDynamicGraph()
             dg.DynamicGraph = frames_seq.copy()
             return dg
-        
+
         # Non-grouped case: reuse previous behavior (with simple primary/fallback per-frame pools)
         if not grouped_up:
             # Build per-frame pools using primary/fallback logic (same as before)
@@ -252,7 +267,9 @@ class SPCDynamicGraph:
 
             # randomized sampling path
             attempts = 0
-            max_attempts = int(min(max_enumeration, total_combinations, target_count * 50))
+            max_attempts = int(
+                min(max_enumeration, total_combinations, target_count * 50)
+            )
             while len(results) < target_count and attempts < max_attempts:
                 indices = [random.randrange(s) for s in sizes]
                 frames_seq = [pools[i][indices[i]] for i in range(frames)]
@@ -262,7 +279,10 @@ class SPCDynamicGraph:
                 attempts += 1
 
             # best-effort deterministic fill
-            if len(results) < target_count and total_combinations <= max_enumeration * 5:
+            if (
+                len(results) < target_count
+                and total_combinations <= max_enumeration * 5
+            ):
                 for indices in itertools.product(*(range(s) for s in sizes)):
                     frames_seq = [pools[i][indices[i]] for i in range(frames)]
                     dg = build_and_record(frames_seq)
@@ -272,7 +292,7 @@ class SPCDynamicGraph:
                             break
 
             return results
-        
+
         # Grouped-up case
         # groups is list-of-lists (may contain empty groups)
         groups = path_up if path_up else []
@@ -343,7 +363,7 @@ class SPCDynamicGraph:
             total_combinations = prod0
         else:
             # avoid iterating all n_groups**m assignments when that count is huge.
-            assignment_count = n_groups ** m
+            assignment_count = n_groups**m
             # threshold for exact assignment enumeration (tunable)
             EXACT_ASSIGNMENT_LIMIT = min(100000, max(10000, int(max_enumeration)))
             if assignment_count <= EXACT_ASSIGNMENT_LIMIT:
@@ -371,7 +391,9 @@ class SPCDynamicGraph:
                 # conservative estimate, but prevent zero which would break logic
                 est_total = int(avg_prod * assignment_count)
                 total_combinations = max(est_total, assignment_count, 1)
-                _log(f"estimate total_combinations={total_combinations} (assignment_count={assignment_count}, avg_prod={avg_prod:.2f})")
+                _log(
+                    f"estimate total_combinations={total_combinations} (assignment_count={assignment_count}, avg_prod={avg_prod:.2f})"
+                )
 
         # enumeration path if small enough
         if total_combinations <= max_enumeration:
@@ -401,15 +423,17 @@ class SPCDynamicGraph:
                     if len(results) >= target_count:
                         break
                 return results
-            
+
         # randomized sampling path (total_combinations huge)
         attempts = 0
         # Allow more trials for hard labeled constraints so rare-valid combos can be found.
-        max_attempts = int(min(
-            max_enumeration,
-            total_combinations if total_combinations > 0 else max_enumeration,
-            max(target_count * 1000, 1000)
-        ))
+        max_attempts = int(
+            min(
+                max_enumeration,
+                total_combinations if total_combinations > 0 else max_enumeration,
+                max(target_count * 1000, 1000),
+            )
+        )
         _log(f"[generateUniqueSet-MPC] max_attempts={max_attempts}")
         while len(results) < target_count and attempts < max_attempts:
             # pick a random assignment for labeled pids
@@ -436,11 +460,14 @@ class SPCDynamicGraph:
                     results.append(dg)
                     if len(results) >= target_count:
                         break
-            _log(f"[generateUniqueSet-MPC] deterministic fill finished, total found {len(results)}")
+            _log(
+                f"[generateUniqueSet-MPC] deterministic fill finished, total found {len(results)}"
+            )
 
         _log(f"[generateUniqueSet-MPC] returning {len(results)} dynamics")
         return results
-    
+
+
 class MPCDynamicGraph:
     """
     Build a dynamic graph sequence for Multi-Pair timelines.
@@ -455,6 +482,7 @@ class MPCDynamicGraph:
     - seed: optional int for deterministic selection
     - no_double: if True avoid reusing the same frame index twice when possible
     """
+
     def __init__(self):
         self.DynamicGraph: List[nx.Graph] = []
         self.selected_frame_indices: List[int] = []
@@ -463,13 +491,15 @@ class MPCDynamicGraph:
     def _hamming(self, a: Tuple[bool, ...], b: Tuple[bool, ...]) -> int:
         return sum(1 for x, y in zip(a, b) if x != y) + abs(len(a) - len(b))
 
-    def buildDynaGraph(self,
-                       mpc_timeline: List[Tuple[bool, ...]],
-                       mpc_frame_set: dict,
-                       seed: int = None,
-                       no_double: bool = True,
-                       allow_hamming_fallback: bool = True,
-                       force: bool = True) -> List[nx.Graph]:
+    def buildDynaGraph(
+        self,
+        mpc_timeline: List[Tuple[bool, ...]],
+        mpc_frame_set: dict,
+        seed: int = None,
+        no_double: bool = True,
+        allow_hamming_fallback: bool = True,
+        force: bool = True,
+    ) -> List[nx.Graph]:
         """
         Modified to accept MPC timeline in the new form:
           - mpc_timeline: list of tuples of Optional[int] per pair (None -> down, int -> up with id)
@@ -502,7 +532,7 @@ class MPCDynamicGraph:
                 labeled = True
 
         # precompute idx -> status (boolean tuple)
-        idx_to_status = mpc_frame_set.get('idx_to_status', None)
+        idx_to_status = mpc_frame_set.get("idx_to_status", None)
         if not idx_to_status:
             # build from cases
             idx_to_status = {}
@@ -530,10 +560,10 @@ class MPCDynamicGraph:
         per_pair_idx_to_path = []
         if per_pair:
             for pp in per_pair:
-                per_pair_idx_to_path.append(pp.get('idx_to_path', {}))
+                per_pair_idx_to_path.append(pp.get("idx_to_path", {}))
         else:
             # try to compute if 'pairs' & frames available (best-effort)
-            per_pair_idx_to_path = [ {} for _ in range(n_pairs) ]
+            per_pair_idx_to_path = [{} for _ in range(n_pairs)]
             if pairs:
                 for pi, (s, d) in enumerate(pairs):
                     for idx, G in enumerate(frames):
@@ -550,11 +580,15 @@ class MPCDynamicGraph:
             if not pool:
                 if force:
                     # fallback flow with warning
-                    _log(f"warning: no exact pool for status {desired_status}, attempting fallbacks (force=True)")
+                    _log(
+                        f"warning: no exact pool for status {desired_status}, attempting fallbacks (force=True)"
+                    )
                     # Try hamming fallback
                     found = False
                     if allow_hamming_fallback and cases:
-                        candidates = sorted(cases.keys(), key=lambda s: self._hamming(s, desired_status))
+                        candidates = sorted(
+                            cases.keys(), key=lambda s: self._hamming(s, desired_status)
+                        )
                         for cand in candidates:
                             pool2 = available.get(cand, [])
                             if pool2:
@@ -563,14 +597,18 @@ class MPCDynamicGraph:
                                 break
                     if not found:
                         # fallback to any unused if no_double
-                        remaining = list(all_indices - set(chosen_indices)) if no_double else []
+                        remaining = (
+                            list(all_indices - set(chosen_indices)) if no_double else []
+                        )
                         if remaining:
                             pool = remaining
                         else:
                             # last resort all frames
                             pool = list(all_indices)
                 else:
-                    print(f"aborting: no pool for status {desired_status} and force=False")
+                    print(
+                        f"aborting: no pool for status {desired_status} and force=False"
+                    )
                     raise RuntimeError(f"No pool for status {desired_status}")
 
             # apply greedy pid constraints (if labeled)
@@ -590,30 +628,48 @@ class MPCDynamicGraph:
                     # if pid already bound -> filter pool to frames matching that path_key
                     if pid in pid_map:
                         desired_path = pid_map[pid]
-                        filtered = [i for i in filtered if per_pair_idx_to_path[pi].get(i, None) == desired_path]
+                        filtered = [
+                            i
+                            for i in filtered
+                            if per_pair_idx_to_path[pi].get(i, None) == desired_path
+                        ]
                         if not filtered:
                             break
                     else:
                         # bind pid greedily to some candidate's path_key (choose random candidate that is up for this pair)
-                        candidates_with_path = [i for i in filtered if per_pair_idx_to_path[pi].get(i, None) is not None]
+                        candidates_with_path = [
+                            i
+                            for i in filtered
+                            if per_pair_idx_to_path[pi].get(i, None) is not None
+                        ]
                         if candidates_with_path:
                             chosen_idx = rnd.choice(candidates_with_path)
                             pid_map[pid] = per_pair_idx_to_path[pi].get(chosen_idx)
                             # now filter to match that chosen path
                             desired_path = pid_map[pid]
-                            filtered = [i for i in filtered if per_pair_idx_to_path[pi].get(i, None) == desired_path]
+                            filtered = [
+                                i
+                                for i in filtered
+                                if per_pair_idx_to_path[pi].get(i, None) == desired_path
+                            ]
                         else:
                             # no candidate with a path for this pair -> empty
                             filtered = []
                             break
                 if not filtered:
                     if force:
-                        _log(f"warning: pid constraints left empty pool for frame {frame_entry}, relaxing constraints")
+                        _log(
+                            f"warning: pid constraints left empty pool for frame {frame_entry}, relaxing constraints"
+                        )
                         # relax pid constraints and keep base pool
                         filtered = pool
                     else:
-                        _log(f"aborting: pid constraints unsatisfiable for frame {frame_entry} and force=False")
-                        raise RuntimeError(f"pid constraints unsatisfiable for frame {frame_entry}")
+                        _log(
+                            f"aborting: pid constraints unsatisfiable for frame {frame_entry} and force=False"
+                        )
+                        raise RuntimeError(
+                            f"pid constraints unsatisfiable for frame {frame_entry}"
+                        )
                 pool = filtered
 
             # choose one from pool
@@ -644,13 +700,15 @@ class MPCDynamicGraph:
 
         return self.DynamicGraph
 
-    def generateUniqueSet(self,
-                            mpc_timeline: List[Tuple[bool, ...]],
-                            mpc_frame_set: dict,
-                            target_count: int,
-                            seed: int = None,
-                            max_enumeration: int = 1000000,
-                            force: bool = True) -> List['MPCDynamicGraph']:
+    def generateUniqueSet(
+        self,
+        mpc_timeline: List[Tuple[bool, ...]],
+        mpc_frame_set: dict,
+        target_count: int,
+        seed: int = None,
+        max_enumeration: int = 1000000,
+        force: bool = True,
+    ) -> List["MPCDynamicGraph"]:
         """
         Generate unique MPCDynamicGraph sequences honoring greedy pid persistence if
         mpc_timeline entries are id-labeled (None or int per pair).
@@ -671,16 +729,18 @@ class MPCDynamicGraph:
         # determine if timeline is labeled (None/int) or simple booleans
         labeled = any(any(x is not None for x in t) for t in mpc_timeline)
 
-        _log(f"[generateUniqueSet-MPC] frames={len(frames)}, cases_keys={len(cases)}, target_count={target_count}, labeled={labeled}, seed={seed}")
+        _log(
+            f"[generateUniqueSet-MPC] frames={len(frames)}, cases_keys={len(cases)}, target_count={target_count}, labeled={labeled}, seed={seed}"
+        )
 
         # build per-frame pools by status (like before)
         pools_idx: List[List[int]] = []
         all_indices = list(range(len(frames)))
         # also keep per_pair idx_to_path if present
-        per_pair = mpc_frame_set.get('per_pair', None)
+        per_pair = mpc_frame_set.get("per_pair", None)
         per_pair_idx_to_path = []
         if per_pair:
-            per_pair_idx_to_path = [pp.get('idx_to_path', {}) for pp in per_pair]
+            per_pair_idx_to_path = [pp.get("idx_to_path", {}) for pp in per_pair]
         else:
             # best-effort empty maps if not present
             per_pair_idx_to_path = []
@@ -699,7 +759,9 @@ class MPCDynamicGraph:
             if not idxs:
                 if force:
                     # fallback to all frames (but warn)
-                    _log(f"[generateUniqueSet-MPC] warning: no exact pool for status {status} (frame {si}), falling back to all frames (force=True)")
+                    _log(
+                        f"[generateUniqueSet-MPC] warning: no exact pool for status {status} (frame {si}), falling back to all frames (force=True)"
+                    )
                     idxs = all_indices.copy()
                 else:
                     raise RuntimeError(f"No pool for status {status}")
@@ -712,7 +774,9 @@ class MPCDynamicGraph:
         total_combinations = 1
         for s in sizes:
             total_combinations *= s
-        _log(f"[generateUniqueSet-MPC] estimated total_combinations (product of sizes) = {total_combinations}")
+        _log(
+            f"[generateUniqueSet-MPC] estimated total_combinations (product of sizes) = {total_combinations}"
+        )
 
         # fingerprint helpers (same as before)
         def _frame_fingerprint(g: nx.Graph):
@@ -736,7 +800,9 @@ class MPCDynamicGraph:
             # ensure per_pair_idx_to_path has entries for all pairs; if not, compute is impossible => reject
             if not per_pair_idx_to_path:
                 # attempt best-effort: accept but warn
-                _log("[generateUniqueSet-MPC] warning: per_pair path info missing; cannot enforce pid persistence -> accepting any choice")
+                _log(
+                    "[generateUniqueSet-MPC] warning: per_pair path info missing; cannot enforce pid persistence -> accepting any choice"
+                )
                 return True
             pid_maps_per_pair = [{} for _ in range(len(per_pair_idx_to_path))]
             for pos, idx in enumerate(choice_idxs):
@@ -771,7 +837,9 @@ class MPCDynamicGraph:
             seq = [frames[i] for i in choice_idxs]
             fp = _timeline_fingerprint(seq)
             if fp in seen:
-                _log(f"[generateUniqueSet-MPC] skipped duplicate fingerprint for indices {choice_idxs}")
+                _log(
+                    f"[generateUniqueSet-MPC] skipped duplicate fingerprint for indices {choice_idxs}"
+                )
                 return None
             seen.add(fp)
             dg = MPCDynamicGraph()
@@ -783,51 +851,67 @@ class MPCDynamicGraph:
         # enumeration path (still expensive but we filter by pid consistency)
         if total_combinations <= max_enumeration:
             _log("[generateUniqueSet-MPC] doing exact enumeration")
-            for combo in itertools.product(*(range(len(pools_idx[i])) for i in range(len(pools_idx)))):
+            for combo in itertools.product(
+                *(range(len(pools_idx[i])) for i in range(len(pools_idx)))
+            ):
                 choice = [pools_idx[i][combo[i]] for i in range(len(combo))]
                 if labeled:
                     if not choice_accepts(choice, mpc_timeline):
                         # debug: show small sample of rejections
-                        _log(f"[generateUniqueSet-MPC] rejected by choice_accepts: {choice}")
+                        _log(
+                            f"[generateUniqueSet-MPC] rejected by choice_accepts: {choice}"
+                        )
                         continue
                 dg = build_from_choice_indices(choice)
                 if dg:
                     results.append(dg)
                     if len(results) >= target_count:
                         break
-            _log(f"[generateUniqueSet-MPC] enumeration finished, found {len(results)} results")
+            _log(
+                f"[generateUniqueSet-MPC] enumeration finished, found {len(results)} results"
+            )
             return results
 
         # randomized sampling path
         _log("[generateUniqueSet-MPC] entering randomized sampling path")
         attempts = 0
         # Allow more trials for hard labeled constraints so rare-valid combos can be found.
-        max_attempts = int(min(
-            max_enumeration,
-            total_combinations if total_combinations > 0 else max_enumeration,
-            max(target_count * 1000, 1000)
-        ))
+        max_attempts = int(
+            min(
+                max_enumeration,
+                total_combinations if total_combinations > 0 else max_enumeration,
+                max(target_count * 1000, 1000),
+            )
+        )
         _log(f"[generateUniqueSet-MPC] max_attempts={max_attempts}")
         while len(results) < target_count and attempts < max_attempts:
             choice = [rnd.choice(pools_idx[i]) for i in range(len(pools_idx))]
             if labeled and not choice_accepts(choice, mpc_timeline):
                 if attempts < 50:
-                    _log(f"[generateUniqueSet-MPC] attempt {attempts} rejected by choice_accepts: {choice}")
+                    _log(
+                        f"[generateUniqueSet-MPC] attempt {attempts} rejected by choice_accepts: {choice}"
+                    )
                 attempts += 1
                 continue
             if attempts < 50:
-                _log(f"[generateUniqueSet-MPC] attempt {attempts} candidate choice: {choice}")
+                _log(
+                    f"[generateUniqueSet-MPC] attempt {attempts} candidate choice: {choice}"
+                )
             dg = build_from_choice_indices(choice)
             if dg:
                 results.append(dg)
             attempts += 1
 
-        _log(f"[generateUniqueSet-MPC] sampling finished after {attempts} attempts, found {len(results)} results")
+        _log(
+            f"[generateUniqueSet-MPC] sampling finished after {attempts} attempts, found {len(results)} results"
+        )
 
         # best-effort deterministic fill if still short (bounded)
         if len(results) < target_count and total_combinations <= max_enumeration * 5:
             _log("[generateUniqueSet-MPC] doing best-effort deterministic fill")
-            for combo in itertools.product(*(range(len(pools_idx[i])) for i in range(len(pools_idx)))):
+            for combo in itertools.product(
+                *(range(len(pools_idx[i])) for i in range(len(pools_idx)))
+            ):
                 choice = [pools_idx[i][combo[i]] for i in range(len(combo))]
                 if labeled and not choice_accepts(choice, mpc_timeline):
                     continue
@@ -836,7 +920,9 @@ class MPCDynamicGraph:
                     results.append(dg)
                     if len(results) >= target_count:
                         break
-            _log(f"[generateUniqueSet-MPC] deterministic fill finished, total found {len(results)}")
+            _log(
+                f"[generateUniqueSet-MPC] deterministic fill finished, total found {len(results)}"
+            )
 
         _log(f"[generateUniqueSet-MPC] returning {len(results)} dynamics")
         return results

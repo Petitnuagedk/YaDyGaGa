@@ -1,6 +1,7 @@
 from typing import List, Tuple
 import random
 
+
 class SPCTimelineBlockGenerator:
     """
     TimelineBlockGenerator is responsible for generating blocks of timelines
@@ -8,13 +9,23 @@ class SPCTimelineBlockGenerator:
     timeline blocks.
     """
 
-    def __init__(self, frames: int, path_life: float, stability: float, seed : float ,mode: str = "blocks", pathPersistency: float = 0.0):
+    def __init__(
+        self,
+        frames: int,
+        path_life: float,
+        stability: float,
+        seed: float,
+        mode: str = "blocks",
+        pathPersistency: float = 0.0,
+    ):
         self.frames = frames
         self.path_life = path_life
         self.stability = stability
         self.mode = mode
         self.seed = seed
-        self.pathPersistency = float(pathPersistency) if pathPersistency is not None else 0.0
+        self.pathPersistency = (
+            float(pathPersistency) if pathPersistency is not None else 0.0
+        )
 
     def generate_blocks(self) -> dict:
         """
@@ -99,7 +110,12 @@ class SPCTimelineBlockGenerator:
         # min_up_blocks = 1, max_up_blocks = up_count (each up frame isolated)
         min_up_blocks = 1
         max_up_blocks = up_count
-        up_blocks = int(round(min_up_blocks + (1.0 - float(self.stability)) * (max_up_blocks - min_up_blocks)))
+        up_blocks = int(
+            round(
+                min_up_blocks
+                + (1.0 - float(self.stability)) * (max_up_blocks - min_up_blocks)
+            )
+        )
         up_blocks = max(min_up_blocks, min(max_up_blocks, up_blocks))
 
         # helper to split a total into `parts` positive integers (as even as possible)
@@ -114,7 +130,7 @@ class SPCTimelineBlockGenerator:
                     sizes[i] = 1
             # adjust if we increased sum beyond total (rare)
             while sum(sizes) > total:
-                for j in range(len(sizes)-1, -1, -1):
+                for j in range(len(sizes) - 1, -1, -1):
                     if sizes[j] > 1 and sum(sizes) > total:
                         sizes[j] -= 1
             return sizes
@@ -123,7 +139,9 @@ class SPCTimelineBlockGenerator:
         # minimal internal down blocks between up blocks is up_blocks - 1
         # possible down blocks are in [max(1, up_blocks - 1), up_blocks + 1]
         min_down_blocks = max(1, up_blocks - 1)
-        max_down_blocks = min(up_blocks + 1, down_count)  # cannot exceed count (each block >=1)
+        max_down_blocks = min(
+            up_blocks + 1, down_count
+        )  # cannot exceed count (each block >=1)
         if max_down_blocks < min_down_blocks:
             # fallback: force min_down_blocks but will merge later
             max_down_blocks = min_down_blocks
@@ -217,7 +235,7 @@ class SPCTimelineBlockGenerator:
 
         # final adjustment to ensure exact frame count
         if len(timeline) > self.frames:
-            timeline = timeline[:self.frames]
+            timeline = timeline[: self.frames]
         elif len(timeline) < self.frames:
             # pad with last state
             if timeline:
@@ -235,7 +253,7 @@ class SPCTimelineBlockGenerator:
                     pid = next_pid
                     next_pid += 1
                 else:
-                    #print(random.random(), self.pathPersistency)
+                    # print(random.random(), self.pathPersistency)
                     if random.random() < self.pathPersistency:
                         pid = last_pid
                     else:
@@ -245,11 +263,11 @@ class SPCTimelineBlockGenerator:
                 last_pid = pid
             else:
                 last_pid = None
-            #print(i, st, path_ids[i], last_pid)
+            # print(i, st, path_ids[i], last_pid)
         self.last_timeline = timeline
         self.last_path_ids = path_ids
         return {"timeline": timeline, "path_ids": path_ids}
-    
+
 
 class MPCTimelineBlockGenerator:
     """
@@ -272,21 +290,26 @@ class MPCTimelineBlockGenerator:
     The generate() method returns a list of frame-state tuples:
       e.g. for n_pairs==3: [(False,False,False),(True,True,True), ...]
     """
-    def __init__(self,
-                 frames: int,
-                 n_pairs: int,
-                 path_life: float,
-                 stability: float,
-                 mode: str = "sync",
-                 seed: int = None,
-                 pathPersistency: float = 0.0):
+
+    def __init__(
+        self,
+        frames: int,
+        n_pairs: int,
+        path_life: float,
+        stability: float,
+        mode: str = "sync",
+        seed: int = None,
+        pathPersistency: float = 0.0,
+    ):
         self.frames = frames
         self.n_pairs = n_pairs
         self.path_life = path_life
         self.stability = stability
         self.mode = mode
         self.seed = seed
-        self.pathPersistency = float(pathPersistency) if pathPersistency is not None else 0.0
+        self.pathPersistency = (
+            float(pathPersistency) if pathPersistency is not None else 0.0
+        )
 
     def generate(self):
         """
@@ -325,7 +348,9 @@ class MPCTimelineBlockGenerator:
                 while remaining > 0:
                     # expected run length
                     avg = max(1, int(round(self.stability * self.frames)))
-                    run = min(remaining, max(1, int(random.expovariate(1.0 / max(1, avg)))))
+                    run = min(
+                        remaining, max(1, int(random.expovariate(1.0 / max(1, avg))))
+                    )
                     # but bias to meet up_count roughly
                     runs.append((is_up, run))
                     if is_up:
@@ -412,7 +437,7 @@ class MPCTimelineBlockGenerator:
 
         frames = len(timeline)
         # collect per-pair lists
-        per_pair = [ [] for _ in range(self.n_pairs) ]
+        per_pair = [[] for _ in range(self.n_pairs)]
         for t in timeline:
             for i, val in enumerate(t):
                 per_pair[i].append(bool(val))
@@ -426,15 +451,17 @@ class MPCTimelineBlockGenerator:
                 if v and not cur:
                     up_blocks += 1
                 cur = v
-            changes = sum(1 for j in range(1, frames) if seq[j] != seq[j-1])
+            changes = sum(1 for j in range(1, frames) if seq[j] != seq[j - 1])
             up_count = sum(1 for v in seq if v)
-            stats["pairs"].append({
-                "pair_index": i,
-                "up_count": up_count,
-                "uptime_ratio": up_count / frames,
-                "up_blocks": up_blocks,
-                "changes": changes,
-            })
+            stats["pairs"].append(
+                {
+                    "pair_index": i,
+                    "up_count": up_count,
+                    "uptime_ratio": up_count / frames,
+                    "up_blocks": up_blocks,
+                    "changes": changes,
+                }
+            )
 
         # global status tuple counts
         if self.n_pairs == 2:
@@ -456,4 +483,3 @@ class MPCTimelineBlockGenerator:
                 stats["status_tuples"][tuple(t)] += 1
 
         return stats
-

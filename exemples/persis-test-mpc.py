@@ -11,20 +11,52 @@ from yadygaga.visualizer import Visualizer
 
 
 def main():
-    G = nx.Graph()
-    G.add_edges_from([("A", "C"), ("B", "C"), ("C", "E"), ("D", "B"), ("E", "F")])
-
+    print(
+        "\n This is a demo case for YADYGAGA, a path constraint Dynamic graph generator\n"
+    )
+    print("\n The demonstration will be made on the following graph:\n")
+    print("         S       Z    ")
+    print("        / \     / \   ")
+    print("       B   C   K   L  ")
+    print("       |   |   |   |  ")
+    print("       D   E   M   N  ")
+    print("        \ /     \ /   ")
+    print("         F       Y  \n")
+    print("In this demo case, the constraint path is bewteen the pair S-F and Z-Y")
     viz = True
+    augment = False
+    G = nx.Graph()
+    G.add_edges_from(
+        [
+            ("S", "C"),
+            ("B", "S"),
+            ("C", "E"),
+            ("D", "B"),
+            ("E", "F"),
+            ("D", "F"),
+            ("Z", "K"),
+            ("K", "M"),
+            ("M", "Y"),
+            ("L", "Z"),
+            ("L", "N"),
+            ("N", "Y"),
+        ]
+    )
     verbose = True
+
     frames = 20
-    pairs = [("A", "D"), ("C", "F")]
+    pairs = [("S", "F"), ("Z", "Y")]
     nPairs = len(pairs)
-    pathLifeTime = 0.5
-    stability = 0.8
+    pathLifeTime = 1
+    stability = 1
     pathPersistency = 1  # test path persistency (0.0..1.0)
     mode = "indep"  # options: "sync" (default) or "indep"
+    limitedMPC = G
+    if augment == True:
+        limitedMPC = SourceGraphAugmenter.augmentBaseGraph(
+            G, pairs, seed=1, verbose=False
+        )
 
-    limitedMPC = SourceGraphAugmenter.augmentBaseGraph(G, pairs, seed=1, verbose=False)
     print("\n", "Original Graph edges: ", G.edges())
     print("Limited Graph edges: ", limitedMPC.edges(), "\n")
 
@@ -81,16 +113,10 @@ def main():
 
     MPCDynaGA = MPCDynamicGraph()
     MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
-    MPCDynaGAset = MPCDynaGA.generateUniqueSet(
-        timeLine, MPCFrameSet, target_count=2, seed=42, max_enumeration=10000
-    )
     if viz == True:
         timeline_visualizer = Visualizer(timeLine)
         timeline_visualizer.visualize_dynamic_graph(
             MPCDynaGA.DynamicGraph, target_pairs=pairs
-        )
-        timeline_visualizer.animate_random_dynamics(
-            MPCDynaGAset, n=2, interval=1000, target_pairs=pairs
         )
 
 
