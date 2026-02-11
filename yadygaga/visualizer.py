@@ -13,6 +13,7 @@ from matplotlib.collections import LineCollection
 import os
 import json
 import glob
+import csv
 
 
 class Visualizer:
@@ -766,19 +767,86 @@ class Visualizer:
 
 def _load_dynamic_graph_from_dir(entry_dir):
     """
-    Read nodes.txt + adj_frame_*.csv from entry_dir and return a list of networkx.Graph frames.
+    Read nodes.txt + frames.csv OR frames.json OR adj_frame_*.csv from entry_dir
+    and return a list of networkx.Graph frames.
+
+    Supported layouts (in order):
+      - frames.csv : compact CSV written by saveSweepMatrices:
+            first line = comma-separated node labels
+            then adjacency matrices stacked vertically; frames separated by blank lines
+      - frames.json : JSON with {"nodes": [...], "frames": [{"frame":i,"edges":[[u,v],...]}, ...]}
+      - adj_frame_*.csv : legacy per-frame adjacency CSV files (adj_frame_0.csv, ...)
     """
+    # Prefer compact frames.csv if present
+    frames_csv = os.path.join(entry_dir, "frames.csv")
+    frames_json = os.path.join(entry_dir, "frames.json")
     nodes_file = os.path.join(entry_dir, "nodes.txt")
+
+    if os.path.exists(frames_csv):
+        graphs = []
+        with open(frames_csv, "r", encoding="utf-8") as fh:
+            lines = [ln.rstrip("\n") for ln in fh]
+        if not lines:
+            raise FileNotFoundError(f"{frames_csv} is empty")
+        # first non-empty line is header nodes
+        header_idx = 0
+        while header_idx < len(lines) and lines[header_idx].strip() == "":
+            header_idx += 1
+        if header_idx >= len(lines):
+            raise FileNotFoundError(f"No header found in {frames_csv}")
+        nodes = [s.strip() for s in lines[header_idx].split(",")]
+        # remaining lines form stacked matrices; blank line separates frames
+        frame_rows = []
+        for ln in lines[header_idx + 1 :]:
+            if ln.strip() == "":
+                if frame_rows:
+                    A = np.array([[int(x) for x in row.split(",")] for row in frame_rows], dtype=int)
+                    if A.size == 0:
+                        graphs.append(nx.Graph())
+                    else:
+                        G = nx.from_numpy_array(A)
+                        mapping = {i: nodes[i] for i in range(min(len(nodes), A.shape[0]))}
+                        G = nx.relabel_nodes(G, mapping)
+                        graphs.append(G)
+                    frame_rows = []
+                continue
+            frame_rows.append(ln)
+        # last frame if any
+        if frame_rows:
+            A = np.array([[int(x) for x in row.split(",")] for row in frame_rows], dtype=int)
+            if A.size == 0:
+                graphs.append(nx.Graph())
+            else:
+                G = nx.from_numpy_array(A)
+                mapping = {i: nodes[i] for i in range(min(len(nodes), A.shape[0]))}
+                G = nx.relabel_nodes(G, mapping)
+                graphs.append(G)
+        return graphs
+
+    if os.path.exists(frames_json):
+        with open(frames_json, "r", encoding="utf-8") as jf:
+            j = json.load(jf)
+        nodes = j.get("nodes", [])
+        frames = j.get("frames", [])
+        graphs = []
+        for fr in frames:
+            G = nx.Graph()
+            G.add_nodes_from(nodes)
+            for e in fr.get("edges", []):
+                if len(e) >= 2:
+                    G.add_edge(str(e[0]), str(e[1]))
+            graphs.append(G)
+        return graphs
+
+    # legacy: per-frame adjacency CSV files plus nodes.txt
     if not os.path.exists(nodes_file):
         raise FileNotFoundError(f"nodes.txt not found in {entry_dir}")
-
     with open(nodes_file, "r", encoding="utf-8") as f:
         nodes = [line.strip() for line in f if line.strip()]
 
     adj_files = sorted(glob.glob(os.path.join(entry_dir, "adj_frame_*.csv")))
     if not adj_files:
-        raise FileNotFoundError(f"No adjacency frame CSVs found in {entry_dir}")
-
+        raise FileNotFoundError(f"No adjacency frame CSVs or frames.csv/frames.json found in {entry_dir}")
     graphs = []
     for af in adj_files:
         A = np.loadtxt(af, delimiter=",", dtype=int)

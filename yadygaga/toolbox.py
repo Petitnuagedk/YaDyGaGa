@@ -5,6 +5,7 @@ import numpy as np
 import glob
 import csv
 import networkx as nx
+from .visualizer import _load_dynamic_graph_from_dir
 
 
 def timelineFeasibleParams(
@@ -18,12 +19,12 @@ def timelineFeasibleParams(
     - l = frames
     - k = number of frames where the path exists = ceil(alpha * l)
     - transitions t is number of adjacent frame changes (0 <= t <= l-1)
-    - stability s is defined as s = 1 - t/(l-1)  (fraction of unchanged adjacencies)
+    - stability s is defined as s = 1 - t/(l - 1)  (fraction of unchanged adjacencies)
 
     Feasible transitions for a given k:
     - if k == 0 or k == l: t_min = 0, t_max = 0
     - else: t_min = 2 (one contiguous run of presences and one run of absences)
-            t_max = min(l-1, 2*min(k, l-k)) (alternating as much as counts allow)
+            t_max = min(l - 1, 2 * min(k, l - k)) (alternating as much as counts allow)
 
     Returns a dict with keys:
       - 'frames'
@@ -128,7 +129,9 @@ def saveSweepMatrices(
     """
     Persist sweep results to disk.
 
-    file_format: "csv" (default) -> adjacency matrices per-frame as CSV (existing behavior)
+    file_format: "csv" (default) -> compact CSV per-entry: one CSV file containing
+                 node header then stacked adjacency matrices (frames stacked vertically,
+                 optional blank line between frames).
                  "json" -> per-entry JSON file containing nodes and per-frame edge lists.
 
     Other behavior unchanged.
@@ -169,19 +172,36 @@ def saveSweepMatrices(
             all_nodes.update(list(G.nodes()))
         nodes = sorted(list(all_nodes), key=lambda x: str(x))
 
-        # Save nodes order
+        # Save nodes order (keep for compatibility)
         nodes_file = os.path.join(entry_dir, "nodes.txt")
         with open(nodes_file, "w", encoding="utf-8") as f:
             for n in nodes:
                 f.write(f"{n}\n")
 
         if fmt == "csv":
-            # Save adjacency matrix per frame as CSV (0/1 integer entries)
-            for t, G in enumerate(dyn_graph):
-                # ensure adjacency uses same node order
-                A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
-                frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
-                np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+            # Compact CSV: one file containing nodes header then stacked adjacency matrices.
+            # File format:
+            #   A,B,C
+            #   frame0_row0
+            #   frame0_row1
+            #   ...
+            #
+            #   frame1_row0
+            #   frame1_row1
+            #   ...
+            frames_file = os.path.join(entry_dir, f"frames.csv")
+            with open(frames_file, "w", encoding="utf-8", newline="") as cf:
+                # header: node labels
+                cf.write(",".join(map(str, nodes)) + "\n")
+                for t, G in enumerate(dyn_graph):
+                    # ensure adjacency uses same node order and integer 0/1
+                    A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+                    # write each row of adjacency
+                    for row in A.astype(int):
+                        cf.write(",".join(map(str, row.tolist())) + "\n")
+                    # separate frames with a blank line (except after last)
+                    if t != len(dyn_graph) - 1:
+                        cf.write("\n")
         elif fmt == "json":
             # Save compact JSON representation: nodes + per-frame edge lists (node labels)
             frames_json = []
@@ -405,58 +425,52 @@ def loadDGfromDir(entry_dir):
 
 def loadFromDirectory(path):
     """
-    Inspect `path` and load dynamic graph(s).
-    - If path contains nodes.txt -> returns a single dynamic graph (list of frames).
-    - If path contains index.csv -> returns a list of entries; each entry is dict with keys:
-        {entry_id, entry_dir, entry_name (optional), frames, dynamic_graph, param_name (optional), param_value (optional)}
+    Load sweep output produced by saveSweepMatrices().
+    Returns a dict compatible with Visualizer.plotLoadedData:
+      - {'type':'single', 'dynamic_graph': [...frames...]} for a single entry dir
+      - {'type':'batch', 'entries': [ {entry_id, param_name, param_value, frames, entry_dir, dynamic_graph}, ... ]}
     """
     if not os.path.exists(path):
         raise FileNotFoundError(path)
 
-    # single dynamic graph directory (has nodes.txt)
-    if os.path.exists(os.path.join(path, "nodes.txt")):
-        dg = loadDGfromDir(path)
+    # single dynamic graph directory (has nodes.txt or frames.csv/frames.json)
+    try:
+        dg = _load_dynamic_graph_from_dir(path)
         return {"type": "single", "dynamic_graph": dg}
+    except Exception:
+        # not a single entry dir -> continue to try batch/index
+        pass
 
-    # batch / sweep layout: expect index.csv at root
     index_file = os.path.join(path, "index.csv")
-    if not os.path.exists(index_file):
-        # try to find single entry subdirectories automatically
-        subdirs = [
-            os.path.join(path, d)
-            for d in os.listdir(path)
-            if os.path.isdir(os.path.join(path, d))
-        ]
-        results = []
-        for sd in subdirs:
-            try:
-                dg = loadDGfromDir(sd)
-                results.append({"entry_dir": os.path.basename(sd), "dynamic_graph": dg})
-            except FileNotFoundError:
-                continue
-        return {"type": "batch", "entries": results}
-
-    # parse index.csv entries
     entries = []
-    with open(index_file, "r", encoding="utf-8") as idxf:
-        reader = csv.DictReader(idxf)
-        for row in reader:
-            entry_dir = os.path.join(path, row.get("entry_dir", "").strip())
-            if not entry_dir:
-                continue
-            try:
-                dg = loadDGfromDir(entry_dir)
-            except FileNotFoundError:
-                dg = []
-            entry = {
-                "entry_id": row.get("entry_id"),
-                "entry_dir": row.get("entry_dir"),
-                "param_name": row.get("param_name"),
-                "param_value": row.get("param_value"),
-                "frames": int(row.get("frames")) if row.get("frames") else None,
-                "dynamic_graph": dg,
-            }
-            entries.append(entry)
+    if os.path.exists(index_file):
+        with open(index_file, "r", encoding="utf-8") as idxf:
+            reader = csv.DictReader(idxf)
+            for row in reader:
+                entry_dir = os.path.join(path, row.get("entry_dir", "").strip())
+                try:
+                    dg = _load_dynamic_graph_from_dir(entry_dir)
+                except Exception:
+                    dg = []
+                entry = {
+                    "entry_id": row.get("entry_id"),
+                    "entry_dir": row.get("entry_dir"),
+                    "param_name": row.get("param_name"),
+                    "param_value": row.get("param_value"),
+                    "frames": int(row.get("frames")) if row.get("frames") else (len(dg) if dg else 0),
+                    "dynamic_graph": dg,
+                }
+                entries.append(entry)
+        return {"type": "batch", "entries": entries}
+
+    # fallback: discover subdirectories and try to load each as an entry
+    subdirs = [os.path.join(path, d) for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+    for sd in subdirs:
+        try:
+            dg = _load_dynamic_graph_from_dir(sd)
+            entries.append({"entry_dir": os.path.basename(sd), "dynamic_graph": dg, "frames": len(dg)})
+        except Exception:
+            continue
     return {"type": "batch", "entries": entries}
 
 
