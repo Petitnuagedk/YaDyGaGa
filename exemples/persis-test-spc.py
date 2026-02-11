@@ -43,7 +43,7 @@ def main():
     down = fg.path_down_frames
 
     timeline_gen = SPCTimelineBlockGenerator(
-        frames=40, path_life=1, stability=1, seed=42, mode="blocks", pathPersistency=0.5
+        frames=40, path_life=1, stability=1, seed=42, mode="blocks", pathPersistency=1
     )
     timeLine = timeline_gen.generate_blocks()
 

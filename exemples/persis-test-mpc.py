@@ -100,6 +100,7 @@ def main():
     # Inspect per-pair path keys for selected frames to check persistence behavior
     per_pair = MPCFrameSet.get("per_pair", [])
     sel_idxs = getattr(MPCDynaGA, "selected_frame_indices", [])
+
     if per_pair and sel_idxs and verbose:
         print("\nPer-frame selected path keys for each pair (None => down):")
         for fi, idx in enumerate(sel_idxs):
@@ -113,6 +114,7 @@ def main():
 
     MPCDynaGA = MPCDynamicGraph()
     MPCDynaGA.buildDynaGraph(timeLine, MPCFrameSet)
+    
     if viz == True:
         timeline_visualizer = Visualizer(timeLine)
         timeline_visualizer.visualize_dynamic_graph(
