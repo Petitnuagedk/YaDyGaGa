@@ -6,6 +6,21 @@ import glob
 import csv
 import networkx as nx
 from .visualizer import _load_dynamic_graph_from_dir
+import logging
+import datetime
+
+# simple per-out_dir debug logger (writes into the out_dir folder)
+def _make_logger(out_dir):
+    log_path = os.path.join(out_dir, "toolbox_debug.log")
+    def _log(msg):
+        ts = datetime.datetime.now().isoformat()
+        try:
+            with open(log_path, "a", encoding="utf-8") as lf:
+                lf.write(f"{ts} {msg}\n")
+        except Exception:
+            # best-effort only
+            pass
+    return _log
 
 
 def timelineFeasibleParams(
@@ -137,6 +152,8 @@ def saveSweepMatrices(
     Other behavior unchanged.
     """
     os.makedirs(out_dir, exist_ok=True)
+    _log = _make_logger(out_dir)
+    _log(f"saveSweepMatrices: starting, entries={len(sweep_results)}, format={file_format}, overwrite={overwrite}")
     index_rows = []
     fmt = file_format.lower()
     for i, entry in enumerate(sweep_results):
@@ -144,6 +161,7 @@ def saveSweepMatrices(
         param_value = entry.get("param_value", entry.get(param_name, "nan"))
         dyn_graph = entry.get("dynamic_graph")
         if dyn_graph is None:
+            _log(f"entry[{i}] skipped: dynamic_graph is None (param_value={param_value})")
             # skip malformed entry
             continue
 
@@ -169,8 +187,13 @@ def saveSweepMatrices(
         # Determine node ordering: union of all nodes across frames, sorted for reproducibility
         all_nodes = set()
         for G in dyn_graph:
-            all_nodes.update(list(G.nodes()))
+            try:
+                all_nodes.update(list(G.nodes()))
+            except Exception as e:
+                _log(f"entry[{i}] warning: could not get nodes() from a frame: {e}")
         nodes = sorted(list(all_nodes), key=lambda x: str(x))
+
+        _log(f"entry[{i}] param_value={param_value} frames={len(dyn_graph)} nodes_count={len(nodes)} entry_dir={entry_dir}")
 
         # Save nodes order (keep for compatibility)
         nodes_file = os.path.join(entry_dir, "nodes.txt")
@@ -190,18 +213,55 @@ def saveSweepMatrices(
             #   frame1_row1
             #   ...
             frames_file = os.path.join(entry_dir, f"frames.csv")
-            with open(frames_file, "w", encoding="utf-8", newline="") as cf:
-                # header: node labels
-                cf.write(",".join(map(str, nodes)) + "\n")
+            try:
+                with open(frames_file, "w", encoding="utf-8", newline="") as cf:
+                    # header: node labels
+                    cf.write(",".join(map(str, nodes)) + "\n")
+                    for t, G in enumerate(dyn_graph):
+                        # ensure adjacency uses same node order and integer 0/1
+                        try:
+                            A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+                        except Exception as e:
+                            _log(f"entry[{i}] frame[{t}] to_numpy_array failed: {e}")
+                            # write an all-zero row block to keep CSV structure
+                            A = np.zeros((len(nodes), len(nodes)), dtype=int)
+                        # shape check
+                        if A.shape != (len(nodes), len(nodes)):
+                            _log(f"entry[{i}] frame[{t}] adjacency shape mismatch {A.shape} expected {(len(nodes), len(nodes))}")
+                        # write each row of adjacency
+                        for row in A.astype(int):
+                            cf.write(",".join(map(str, row.tolist())) + "\n")
+                        # separate frames with a blank line (except after last)
+                        if t != len(dyn_graph) - 1:
+                            cf.write("\n")
+                # post-write verification
+                try:
+                    sz = os.path.getsize(frames_file)
+                except Exception:
+                    sz = -1
+                _log(f"entry[{i}] wrote frames.csv size={sz} ({frames_file})")
+                if sz <= 1:
+                    _log(f"entry[{i}] frames.csv suspiciously small (size={sz}), dumping debug adjacency files")
+                    # dump debug adjacency matrices for inspection
+                    dbg_dir = os.path.join(entry_dir, "debug_dump")
+                    os.makedirs(dbg_dir, exist_ok=True)
+                    for t, G in enumerate(dyn_graph):
+                        try:
+                            A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+                            np.savetxt(os.path.join(dbg_dir, f"adj_frame_{t:03d}.csv"), A, fmt="%d", delimiter=",")
+                        except Exception as e:
+                            _log(f"entry[{i}] dump frame[{t}] failed: {e}")
+            except Exception as e:
+                _log(f"entry[{i}] ERROR writing frames.csv: {e}")
+                # fallback: write per-frame debug dumps
+                dbg_dir = os.path.join(entry_dir, "debug_dump")
+                os.makedirs(dbg_dir, exist_ok=True)
                 for t, G in enumerate(dyn_graph):
-                    # ensure adjacency uses same node order and integer 0/1
-                    A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
-                    # write each row of adjacency
-                    for row in A.astype(int):
-                        cf.write(",".join(map(str, row.tolist())) + "\n")
-                    # separate frames with a blank line (except after last)
-                    if t != len(dyn_graph) - 1:
-                        cf.write("\n")
+                    try:
+                        A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
+                        np.savetxt(os.path.join(dbg_dir, f"adj_frame_{t:03d}.csv"), A, fmt="%d", delimiter=",")
+                    except Exception as e2:
+                        _log(f"entry[{i}] fallback dump frame[{t}] failed: {e2}")
         elif fmt == "json":
             # Save compact JSON representation: nodes + per-frame edge lists (node labels)
             frames_json = []
@@ -245,7 +305,7 @@ def saveSweepMatrices(
             idxf.write(
                 f"{r['entry_id']},{r['param_name']},{r['param_value']},{r['frames']},{r['entry_dir']}\n"
             )
-
+    _log(f"saveSweepMatrices: finished, wrote index={index_file}, entries_written={len(index_rows)}")
     return index_file
 
 
