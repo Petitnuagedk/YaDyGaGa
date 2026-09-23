@@ -355,7 +355,7 @@ def saveDGmatrices(
     all_nodes = set()
     for G in dyn_graph:
         all_nodes.update(list(G.nodes()))
-    nodes = sorted(list(all_nodes), key=lambda x: str(x))
+    nodes = sorted(list(all_nodes), key=lambda x: int(str(x).split("_")[1]))
 
     # Save nodes order
     nodes_file = os.path.join(entry_dir, "nodes.txt")
@@ -365,19 +365,39 @@ def saveDGmatrices(
 
     fmt = file_format.lower()
     if fmt == "csv":
-        # Save adjacency matrix per frame as CSV (0/1 integer entries)
-        for t, G in enumerate(dyn_graph):
-            A = nx.to_numpy_array(G, nodelist=nodes, dtype=int)
-            frame_file = os.path.join(entry_dir, f"adj_frame_{t:03d}.csv")
-            np.savetxt(frame_file, A, fmt="%d", delimiter=",")
+        # Save all adjacency matrices in a single CSV file.
+        # Matrices are stacked vertically with a blank line between frames.
+        frames_file = os.path.join(entry_dir, "frames.csv")
+
+        with open(frames_file, "w", encoding="utf-8", newline="") as cf:
+            # Node labels as the header
+            cf.write(",".join(map(str, nodes)) + "\n")
+
+            for t, G in enumerate(dyn_graph):
+                # Use the same node ordering for every frame
+                A = nx.to_numpy_array(
+                    G,
+                    nodelist=nodes,
+                    dtype=int
+                )
+
+                # Write matrix rows
+                for row in A.astype(int):
+                    cf.write(",".join(map(str, row.tolist())) + "\n")
+
+                # Empty line separating matrices
+                if t != len(dyn_graph) - 1:
+                    cf.write("\n")
+
         meta = {
             "entry_name": entry_name,
             "frames": len(dyn_graph),
             "nodes_file": "nodes.txt",
-            "adj_prefix": "adj_frame_",
+            "frames_file": "frames.csv",
             "format": fmt,
             "entry_dir": os.path.basename(entry_dir),
         }
+    
     elif fmt == "json":
         frames_json = []
         for t, G in enumerate(dyn_graph):

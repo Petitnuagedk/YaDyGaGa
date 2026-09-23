@@ -1,6 +1,6 @@
 # YaDyGaGa
 
-YaDyGaGa is a small toolkit to generate, assemble and visualize dynamic graphs (sequences of networkx Graph objects).  
+YaDyGaGa is a small toolkit to generate, assemble and visualize dynamic graphs (sequences of networkx Graph objects).
 It is aimed at experimentation with path uptime, stability and multi-pair scenarios where each frame is a sampled subgraph.
 
 ## Requirements
