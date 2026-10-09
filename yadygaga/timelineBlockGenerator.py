@@ -117,10 +117,14 @@ class SPCTimelineBlockGenerator:
             )
         )
         up_blocks = max(min_up_blocks, min(max_up_blocks, up_blocks))
+        # Every pair of adjacent up-runs needs at least one separating down
+        # frame. Without this bound, high path_life plus moderate stability
+        # can request more up-runs than the available down frames can separate.
+        up_blocks = min(up_blocks, down_count + 1)
 
         # helper to split a total into `parts` positive integers (as even as possible)
         def _split_counts(total: int, parts: int) -> List[int]:
-            parts = max(1, parts)
+            parts = max(1, min(parts, total))
             base = total // parts
             rem = total % parts
             sizes = [base + (1 if i < rem else 0) for i in range(parts)]

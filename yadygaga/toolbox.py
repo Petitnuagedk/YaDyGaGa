@@ -355,7 +355,14 @@ def saveDGmatrices(
     all_nodes = set()
     for G in dyn_graph:
         all_nodes.update(list(G.nodes()))
-    nodes = sorted(list(all_nodes), key=lambda x: int(str(x).split("_")[1]))
+    def node_sort_key(node):
+        label = str(node)
+        prefix, separator, suffix = label.rpartition("_")
+        if separator and suffix.isdigit():
+            return (0, prefix, int(suffix), label)
+        return (1, label)
+
+    nodes = sorted(all_nodes, key=node_sort_key)
 
     # Save nodes order
     nodes_file = os.path.join(entry_dir, "nodes.txt")
